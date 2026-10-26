@@ -34,6 +34,9 @@ type Engine struct {
 	Log         *slog.Logger
 	Now         func() time.Time
 	ReadBattery func() *sample.Battery
+	// OnHeartbeat runs just before each heartbeat sample (used to re-resolve
+	// the focused repo, which changes without any event when you cd).
+	OnHeartbeat func()
 
 	mu        sync.Mutex
 	focus     hypr.Focus
@@ -124,6 +127,18 @@ func (e *Engine) SetClaude(working bool, repo string) {
 	e.mu.Lock()
 	changed := e.claudeOn != working || e.claudeRepo != repo
 	e.claudeOn, e.claudeRepo = working, repo
+	e.mu.Unlock()
+	if changed {
+		e.poke()
+	}
+}
+
+// SetFocusAndRepo updates focus and its repo together, so no sample ever
+// pairs the new app with the previous app's repo.
+func (e *Engine) SetFocusAndRepo(f hypr.Focus, repo string) {
+	e.mu.Lock()
+	changed := e.focus != f || e.focusRepo != repo
+	e.focus, e.focusRepo = f, repo
 	e.mu.Unlock()
 	if changed {
 		e.poke()
@@ -324,6 +339,9 @@ func (e *Engine) Run(ctx context.Context) {
 				reset()
 			}
 		case <-hb.C:
+			if e.OnHeartbeat != nil {
+				e.OnHeartbeat()
+			}
 			e.emit(ctx, true)
 			reset()
 		}

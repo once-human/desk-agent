@@ -31,6 +31,8 @@ Usage:
   desk-agent pause           stop sending; the site shows the laptop as away
   desk-agent resume          start sending again
   desk-agent status          show whether the agent is paused
+  desk-agent install-hooks   add Claude Code hooks to ~/.claude/settings.json (merges)
+  desk-agent uninstall-hooks remove only the hooks desk-agent added
   desk-agent version
 `
 
@@ -48,6 +50,12 @@ func main() {
 	switch args[0] {
 	case "run":
 		err = cmdRun(ctx)
+	case "hook":
+		cmdHook(args[1:])
+	case "install-hooks":
+		err = cmdInstallHooks(args[1:])
+	case "uninstall-hooks":
+		err = cmdUninstallHooks()
 	case "doctor":
 		if doctor.Run(ctx, os.Stdout, version) > 0 {
 			os.Exit(1)

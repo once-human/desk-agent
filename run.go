@@ -9,14 +9,17 @@ import (
 
 	"github.com/once-human/desk-agent/internal/battery"
 	"github.com/once-human/desk-agent/internal/catalog"
+	"github.com/once-human/desk-agent/internal/claude"
 	"github.com/once-human/desk-agent/internal/config"
 	"github.com/once-human/desk-agent/internal/control"
 	"github.com/once-human/desk-agent/internal/engine"
+	"github.com/once-human/desk-agent/internal/gitrepo"
 	"github.com/once-human/desk-agent/internal/hypr"
 	"github.com/once-human/desk-agent/internal/idle"
 	"github.com/once-human/desk-agent/internal/logind"
 	"github.com/once-human/desk-agent/internal/mpris"
 	"github.com/once-human/desk-agent/internal/paths"
+	"github.com/once-human/desk-agent/internal/proctree"
 	"github.com/once-human/desk-agent/internal/queue"
 	"github.com/once-human/desk-agent/internal/sender"
 )
@@ -66,7 +69,29 @@ func cmdRun(ctx context.Context) error {
 		}
 	}()
 
-	go hypr.Watch(ctx, log, eng.SetFocus)
+	// Repo of the focused terminal/editor: resolved when focus changes and
+	// again before every heartbeat (cd-ing between repos raises no event).
+	resolveRepo := func(f hypr.Focus) string {
+		if f.Class == "" || f.PID <= 0 {
+			return ""
+		}
+		cat := apps.Lookup(f.Class).Category
+		if cat != "terminal" && cat != "editor" && cat != "ide" {
+			return ""
+		}
+		return proctree.Proc{}.RepoFor(f.PID, cat != "terminal")
+	}
+	eng.OnHeartbeat = func() { eng.SetFocusRepo(resolveRepo(eng.Focus())) }
+	go hypr.Watch(ctx, log, func(f hypr.Focus) { eng.SetFocusAndRepo(f, resolveRepo(f)) })
+
+	go func() {
+		w := &claude.Watcher{Path: paths.ClaudeState(), OnChange: func(working bool, cwd string) {
+			eng.SetClaude(working, gitrepo.Name(cwd))
+		}}
+		if err := w.Run(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("claude state watcher stopped", "err", err)
+		}
+	}()
 
 	go func() {
 		w := mpris.NewWatcher(apps, log, eng.SetMedia)

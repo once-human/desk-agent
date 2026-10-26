@@ -8,6 +8,7 @@ import (
 
 	"github.com/once-human/desk-agent/internal/battery"
 	"github.com/once-human/desk-agent/internal/catalog"
+	"github.com/once-human/desk-agent/internal/claude"
 	"github.com/once-human/desk-agent/internal/config"
 	"github.com/once-human/desk-agent/internal/control"
 	"github.com/once-human/desk-agent/internal/hypr"
@@ -23,6 +24,7 @@ func init() {
 		Check{"idle", checkIdle},
 		Check{"logind", checkLogind},
 		Check{"media (mpris)", checkMedia},
+		Check{"claude code hooks", checkClaudeHooks},
 		Check{"battery", checkBattery},
 	)
 }
@@ -95,4 +97,15 @@ func checkMedia(_ context.Context, cfg config.Config) Result {
 		return Result{OK, "session bus ok, no players running"}
 	}
 	return Result{OK, strings.Join(players, "; ")}
+}
+
+func checkClaudeHooks(_ context.Context, _ config.Config) Result {
+	n, total, err := claude.HooksInstalled(claude.SettingsPath())
+	if err != nil {
+		return Result{Warn, err.Error()}
+	}
+	if n == total {
+		return Result{OK, fmt.Sprintf("%d/%d hooks present in %s", n, total, claude.SettingsPath())}
+	}
+	return Result{Warn, fmt.Sprintf("%d/%d hooks in %s: run `desk-agent install-hooks`", n, total, claude.SettingsPath())}
 }
