@@ -23,6 +23,7 @@ import (
 	"github.com/once-human/desk-agent/internal/hypr"
 	"github.com/once-human/desk-agent/internal/idle"
 	"github.com/once-human/desk-agent/internal/logind"
+	"github.com/once-human/desk-agent/internal/mic"
 	"github.com/once-human/desk-agent/internal/mpris"
 	"github.com/once-human/desk-agent/internal/paths"
 	"github.com/once-human/desk-agent/internal/proctree"
@@ -89,6 +90,7 @@ func cmdRun(ctx context.Context) error {
 	eng := engine.New(cfg, apps0, snd, log)
 	eng.ReadBattery = battery.Read
 	eng.ReadSys = sysstat.New().Read
+	eng.MicInUse = mic.InUse
 	if control.PausedFlag() {
 		eng.SetPaused(true)
 		log.Info("starting paused (flag file present)")

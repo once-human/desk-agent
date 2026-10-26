@@ -37,6 +37,8 @@ type Engine struct {
 	ReadBattery func() *sample.Battery
 	// ReadSys reports machine load and the agent's own footprint.
 	ReadSys func() *sample.Sys
+	// MicInUse says whether the microphone is recording (a call).
+	MicInUse func() bool
 	// OnHeartbeat runs just before each heartbeat sample (used to re-resolve
 	// the focused repo, which changes without any event when you cd).
 	OnHeartbeat func()
@@ -367,6 +369,9 @@ func (e *Engine) buildLocked() sample.Sample {
 	}
 	e.accrueLocked(now)
 	s.Focus = e.focusItemsLocked()
+	if e.MicInUse != nil {
+		s.Call = e.MicInUse()
+	}
 	if e.ReadSys != nil {
 		s.Sys = e.ReadSys()
 	}

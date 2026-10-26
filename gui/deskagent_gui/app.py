@@ -174,7 +174,16 @@ class MainWindow(Adw.ApplicationWindow):
         self.current = "live"
         self.ctx.refresh_config()
         self.ctx.poll_now()
-        GLib.timeout_add(1500, self.ctx.poll_now)
+        self._ticks = 0
+        GLib.timeout_add(3000, self._tick)
+
+    def _tick(self):
+        # Every 3 seconds while the window is in front; every 30 when it's behind
+        # other windows or minimised, so an open settings app costs next to nothing.
+        self._ticks += 1
+        if self.is_active() or self._ticks % 10 == 0:
+            self.ctx.poll_now()
+        return True
 
     # ---- layout ----
     def _compact(self, on: bool):
@@ -195,10 +204,14 @@ class MainWindow(Adw.ApplicationWindow):
         self.rail.select(key)
         self.stack.set_visible_child_name(key)
         self.pages[key].on_show()
+        if self.ctx.state is not None:
+            self.pages[key].on_state(self.ctx.state)
 
     def on_state(self, st):
-        for p in self.pages.values():
-            p.on_state(st)
+        # Only the page on screen is redrawn; the others catch up when shown.
+        page = self.pages.get(self.current)
+        if page is not None:
+            page.on_state(st)
 
     # ---- theme ----
     def apply_theme(self, seed: str | None = None):

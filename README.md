@@ -40,6 +40,7 @@ browser extension┘        └─ privacy rules live here, in one place, with t
 | Native music players: track and artist | Browser media titles. YouTube is "watching something on YouTube" plus a video count; no title, no account |
 | Lid closed, battery percent and charging | Anything about adult sites: they collapse to *nothing* |
 | How long each app was focused in the last 30 seconds, so a quick flick between workspaces doesn't count as switching what I'm doing | Anything about private/incognito windows |
+| Whether the microphone is recording (so the site can say I'm on a call). It reads the sound card's on/off status, never audio | Audio, video, or who I'm talking to |
 | How busy the laptop is (CPU and RAM in use), uptime, and what the agent itself costs in memory and CPU | Which processes are running (the only process it looks for is its own settings app, to count its memory) |
 
 How each rule is enforced, not just promised:

@@ -73,7 +73,9 @@ type Sample struct {
 	Media   *Media      `json:"media,omitempty"`
 	Battery *Battery    `json:"battery,omitempty"`
 	Focus   []FocusItem `json:"focus,omitempty"`
-	Sys     *Sys        `json:"sys,omitempty"`
+	// Call is true while the microphone is recording (a call, almost always).
+	Call bool `json:"call,omitempty"`
+	Sys  *Sys `json:"sys,omitempty"`
 }
 
 // Format renders t as an ISO UTC timestamp, floored to a multiple of
