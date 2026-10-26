@@ -49,8 +49,10 @@ func (r *Reader) Read() *sample.Sys {
 	}
 	r.lastTotal, r.lastIdle = total, idle
 
-	if memTotal, memAvail, ok := memInfo(filepath.Join(r.Root, "meminfo")); ok && memTotal > 0 {
+	if memTotal, memAvail, swapTotal, swapFree, ok := memInfo(filepath.Join(r.Root, "meminfo")); ok && memTotal > 0 {
 		used := memTotal - memAvail
+		s.SwapTotalGB = round1(float64(swapTotal) / 1024 / 1024)
+		s.SwapGB = round1(float64(swapTotal-swapFree) / 1024 / 1024)
 		s.Mem = clamp(int(float64(used)/float64(memTotal)*100 + 0.5))
 		s.MemGB = round1(float64(used) / 1024 / 1024)
 		s.TotalGB = round1(float64(memTotal) / 1024 / 1024)
@@ -101,10 +103,10 @@ func cpuTimes(path string) (total, idle uint64, ok bool) {
 	return total, idle, true
 }
 
-func memInfo(path string) (total, avail uint64, ok bool) {
+func memInfo(path string) (total, avail, swapTotal, swapFree uint64, ok bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return 0, 0, false
+		return 0, 0, 0, 0, false
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		f := strings.Fields(line)
@@ -117,9 +119,16 @@ func memInfo(path string) (total, avail uint64, ok bool) {
 			total = n
 		case "MemAvailable:":
 			avail = n
+		case "SwapTotal:":
+			swapTotal = n
+		case "SwapFree:":
+			swapFree = n
 		}
 	}
-	return total, avail, total > 0
+	if swapFree > swapTotal {
+		swapFree = swapTotal
+	}
+	return total, avail, swapTotal, swapFree, total > 0
 }
 
 func rssKB(path string) uint64 {

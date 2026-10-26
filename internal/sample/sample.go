@@ -50,14 +50,16 @@ type FocusItem struct {
 
 // Sys is how hard the laptop is working, and what the agent itself costs.
 type Sys struct {
-	CPU      int     `json:"cpu"`             // whole machine, percent
-	Mem      int     `json:"mem"`             // RAM in use, percent
-	MemGB    float64 `json:"memGB"`           // RAM in use, GB
-	TotalGB  float64 `json:"totalGB"`         // RAM installed, GB
-	AgentMB  float64 `json:"agentMB"`         // this agent's resident memory
-	AgentCPU float64 `json:"agentCPU"`        // this agent's CPU, percent of one core
-	GuiMB    float64 `json:"guiMB,omitempty"` // the settings app, when it's open
-	UptimeH  float64 `json:"uptimeH"`
+	CPU         int     `json:"cpu"`             // whole machine, percent
+	Mem         int     `json:"mem"`             // RAM in use, percent
+	MemGB       float64 `json:"memGB"`           // RAM in use, GB
+	TotalGB     float64 `json:"totalGB"`         // RAM installed, GB
+	SwapGB      float64 `json:"swapGB"`          // swap in use (zram included), GB
+	SwapTotalGB float64 `json:"swapTotalGB"`     // swap available (zram included), GB
+	AgentMB     float64 `json:"agentMB"`         // this agent's resident memory
+	AgentCPU    float64 `json:"agentCPU"`        // this agent's CPU, percent of one core
+	GuiMB       float64 `json:"guiMB,omitempty"` // the settings app, when it's open
+	UptimeH     float64 `json:"uptimeH"`
 }
 
 type Sample struct {
