@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/once-human/desk-agent/internal/battery"
+	"github.com/once-human/desk-agent/internal/catalog"
 	"github.com/once-human/desk-agent/internal/config"
 	"github.com/once-human/desk-agent/internal/control"
 	"github.com/once-human/desk-agent/internal/hypr"
 	"github.com/once-human/desk-agent/internal/idle"
 	"github.com/once-human/desk-agent/internal/logind"
+	"github.com/once-human/desk-agent/internal/mpris"
 )
 
 func init() {
@@ -19,6 +22,7 @@ func init() {
 		Check{"hyprland focus", checkHyprland},
 		Check{"idle", checkIdle},
 		Check{"logind", checkLogind},
+		Check{"media (mpris)", checkMedia},
 		Check{"battery", checkBattery},
 	)
 }
@@ -78,4 +82,17 @@ func checkBattery(_ context.Context, cfg config.Config) Result {
 		return Result{Skip, "no battery found"}
 	}
 	return Result{OK, fmt.Sprintf("%d%%, charging=%v", b.Pct, b.Charging)}
+}
+
+// checkMedia lists players by id and kind only; it never reads metadata.
+func checkMedia(_ context.Context, cfg config.Config) Result {
+	apps, _ := catalog.LoadApps(cfg.AppsFile)
+	players, err := mpris.Probe(apps)
+	if err != nil {
+		return Result{Warn, "session bus unavailable: " + err.Error()}
+	}
+	if len(players) == 0 {
+		return Result{OK, "session bus ok, no players running"}
+	}
+	return Result{OK, strings.Join(players, "; ")}
 }

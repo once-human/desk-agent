@@ -15,6 +15,7 @@ import (
 	"github.com/once-human/desk-agent/internal/hypr"
 	"github.com/once-human/desk-agent/internal/idle"
 	"github.com/once-human/desk-agent/internal/logind"
+	"github.com/once-human/desk-agent/internal/mpris"
 	"github.com/once-human/desk-agent/internal/paths"
 	"github.com/once-human/desk-agent/internal/queue"
 	"github.com/once-human/desk-agent/internal/sender"
@@ -66,6 +67,13 @@ func cmdRun(ctx context.Context) error {
 	}()
 
 	go hypr.Watch(ctx, log, eng.SetFocus)
+
+	go func() {
+		w := mpris.NewWatcher(apps, log, eng.SetMedia)
+		if err := w.Run(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("media detection unavailable", "err", err)
+		}
+	}()
 
 	go func() {
 		th := idle.Thresholds(time.Duration(cfg.ActiveWindowS) * time.Second)
