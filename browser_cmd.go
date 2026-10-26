@@ -116,6 +116,7 @@ func cmdFetchBlocklist(args []string) error {
 	if err := review.WriteAtomic(cfg.AdultBlocklistFile, []byte(b.String())); err != nil {
 		return err
 	}
-	fmt.Printf("Wrote %d hosts to %s\nRestart the agent to apply it:  systemctl --user restart desk-agent\n", f.Len(), cfg.AdultBlocklistFile)
+	fmt.Printf("Wrote %d hosts to %s\n", f.Len(), cfg.AdultBlocklistFile)
+	notifyReload()
 	return nil
 }

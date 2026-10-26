@@ -5,6 +5,7 @@
 //	ping    -> "pong"
 //	reload  -> re-read the pause flag, config.toml, sites.toml, apps.toml and
 //	           the adult blocklist; "ok paused=<bool>" or "error <why>"
+//	flush   -> save the focused-apps record to disk now; "ok"
 //	state   -> one line of JSON (see State), used by `desk-agent status --json`
 //	           and the GUI
 //
@@ -37,6 +38,10 @@ type Handler interface {
 	Reload() error
 	State() State
 }
+
+// Flusher is optionally implemented by a Handler to save in-memory records on
+// request (the `flush` command).
+type Flusher interface{ Flush() }
 
 // State is what `state` returns: everything a UI needs, nothing sensitive
 // beyond what the agent would send anyway (the sample is exactly what is, or
@@ -115,6 +120,11 @@ func serveConn(c net.Conn, log *slog.Logger, h Handler) {
 			return
 		}
 		fmt.Fprintf(c, "%s\n", b)
+	case "flush":
+		if f, ok := h.(Flusher); ok {
+			f.Flush()
+		}
+		fmt.Fprintln(c, "ok")
 	case "ping":
 		fmt.Fprintln(c, "pong")
 	default:

@@ -98,3 +98,25 @@ func TestSocketIsPrivate(t *testing.T) {
 		t.Errorf("socket mode %v lets others in", fi.Mode().Perm())
 	}
 }
+
+type flusher struct {
+	fake
+	flushed int
+}
+
+func (f *flusher) Flush() { f.mu.Lock(); f.flushed++; f.mu.Unlock() }
+
+func TestFlushIsOptionalAndWorks(t *testing.T) {
+	f := &flusher{}
+	serve(t, f)
+	if r, _ := Notify("flush"); r != "ok" || f.flushed != 1 {
+		t.Fatalf("flush = %q flushed=%d", r, f.flushed)
+	}
+}
+
+func TestFlushWithoutSupportIsHarmless(t *testing.T) {
+	serve(t, &fake{})
+	if r, _ := Notify("flush"); r != "ok" {
+		t.Fatalf("flush = %q", r)
+	}
+}

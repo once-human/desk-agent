@@ -126,8 +126,9 @@ func cmdRun(ctx context.Context) error {
 	if u, err := url.Parse(cfg.Endpoint); err == nil {
 		endpointHost = u.Host
 	}
+	seen := seenapps.Open(paths.SeenApps())
 	h := &handler{
-		eng: eng, reload: reload,
+		eng: eng, reload: reload, flush: func() { _ = seen.Flush() },
 		state: func() control.State {
 			st := control.State{
 				Version: version, PID: os.Getpid(), Started: started,
@@ -191,7 +192,6 @@ func cmdRun(ctx context.Context) error {
 		}
 	}()
 
-	seen := seenapps.Open(paths.SeenApps())
 	go func() {
 		t := time.NewTicker(time.Minute)
 		defer t.Stop()
@@ -278,8 +278,13 @@ type handler struct {
 	eng    *engine.Engine
 	reload func() error
 	state  func() control.State
+	flush  func()
 }
 
 func (h *handler) SetPaused(p bool)     { h.eng.SetPaused(p) }
 func (h *handler) Reload() error        { return h.reload() }
 func (h *handler) State() control.State { return h.state() }
+
+// Flush saves what is only kept in memory (the focused-apps record), so the
+// GUI's app list is current without waiting for the minute timer.
+func (h *handler) Flush() { h.flush() }
