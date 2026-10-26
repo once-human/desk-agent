@@ -13,6 +13,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/once-human/desk-agent/internal/config"
+	"github.com/once-human/desk-agent/internal/control"
 	"github.com/once-human/desk-agent/internal/doctor"
 	"github.com/once-human/desk-agent/internal/paths"
 )
@@ -45,6 +46,8 @@ func main() {
 
 	var err error
 	switch args[0] {
+	case "run":
+		err = cmdRun(ctx)
 	case "doctor":
 		if doctor.Run(ctx, os.Stdout, version) > 0 {
 			os.Exit(1)
@@ -122,14 +125,24 @@ func cmdPause(pause bool) error {
 		if err := os.WriteFile(paths.PausedFile(), []byte("paused\n"), 0o600); err != nil {
 			return err
 		}
+		notifyAgent()
 		fmt.Println("paused: nothing is sent until you run `desk-agent resume`")
 		return nil
 	}
 	if err := os.Remove(paths.PausedFile()); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	notifyAgent()
 	fmt.Println("resumed")
 	return nil
+}
+
+// notifyAgent tells a running agent to re-read the flag now. If none is
+// running, the flag is picked up at its next start.
+func notifyAgent() {
+	if _, err := control.Notify("reload"); err != nil {
+		fmt.Fprintln(os.Stderr, "note:", err, "(the flag applies when it starts)")
+	}
 }
 
 func cmdStatus() error {
