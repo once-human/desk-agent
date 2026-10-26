@@ -33,6 +33,11 @@ Usage:
   desk-agent status          show whether the agent is paused
   desk-agent install-hooks   add Claude Code hooks to ~/.claude/settings.json (merges)
   desk-agent uninstall-hooks remove only the hooks desk-agent added
+  desk-agent scan-history    propose sites.toml from browser history, then open it to review
+  desk-agent scan-apps       propose apps.toml from .desktop files of apps you used
+  desk-agent fetch-blocklist download a community adult-site blocklist once (optional)
+  desk-agent install-native-host    let the browser extension reach the agent
+  desk-agent uninstall-native-host  remove those manifests
   desk-agent version
 `
 
@@ -56,6 +61,18 @@ func main() {
 		err = cmdInstallHooks(args[1:])
 	case "uninstall-hooks":
 		err = cmdUninstallHooks()
+	case "fetch-blocklist":
+		err = cmdFetchBlocklist(args[1:])
+	case "scan-history":
+		err = cmdScanHistory(args[1:])
+	case "scan-apps":
+		err = cmdScanApps(args[1:])
+	case "native-host":
+		cmdNativeHost(args[1:])
+	case "install-native-host":
+		err = cmdInstallNativeHost(args[1:])
+	case "uninstall-native-host":
+		err = cmdInstallNativeHost([]string{"--remove"})
 	case "doctor":
 		if doctor.Run(ctx, os.Stdout, version) > 0 {
 			os.Exit(1)

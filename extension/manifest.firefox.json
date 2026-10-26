@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "desk-agent",
+  "description": "Tells your local desk-agent which site (hostname only) you are on. Nothing leaves your computer from here.",
+  "version": "0.1.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "desk-agent@onkaryaglewad.in",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  },
+  "permissions": ["tabs", "nativeMessaging", "alarms"],
+  "background": { "scripts": ["background.js"] },
+  "icons": { "128": "icon.png" }
+}

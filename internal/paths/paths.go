@@ -67,3 +67,18 @@ func itoa(n int) string {
 
 // EnsureDir creates dir (and parents) with mode 0700.
 func EnsureDir(dir string) error { return os.MkdirAll(dir, 0o700) }
+
+// Expand resolves a leading "~/" (or a lone "~") against the home directory,
+// so paths written in config.toml as "~/.config/..." work.
+func Expand(p string) string {
+	if p == "~" {
+		return home()
+	}
+	if len(p) >= 2 && p[0] == '~' && p[1] == '/' {
+		return filepath.Join(home(), p[2:])
+	}
+	return p
+}
+
+// SeenApps is the local record of focused window classes (never sent).
+func SeenApps() string { return filepath.Join(StateDir(), "seen-apps.json") }

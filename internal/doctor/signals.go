@@ -6,7 +6,12 @@ import (
 	"fmt"
 	"strings"
 
+	"os"
+	"path/filepath"
+
+	"github.com/once-human/desk-agent/internal/adult"
 	"github.com/once-human/desk-agent/internal/battery"
+	"github.com/once-human/desk-agent/internal/bridge"
 	"github.com/once-human/desk-agent/internal/catalog"
 	"github.com/once-human/desk-agent/internal/claude"
 	"github.com/once-human/desk-agent/internal/config"
@@ -15,6 +20,8 @@ import (
 	"github.com/once-human/desk-agent/internal/idle"
 	"github.com/once-human/desk-agent/internal/logind"
 	"github.com/once-human/desk-agent/internal/mpris"
+	"github.com/once-human/desk-agent/internal/nativehost"
+	"github.com/once-human/desk-agent/internal/paths"
 )
 
 func init() {
@@ -25,6 +32,8 @@ func init() {
 		Check{"logind", checkLogind},
 		Check{"media (mpris)", checkMedia},
 		Check{"claude code hooks", checkClaudeHooks},
+		Check{"browser extension", checkBrowserExtension},
+		Check{"sites & apps", checkCatalogs},
 		Check{"battery", checkBattery},
 	)
 }
@@ -108,4 +117,63 @@ func checkClaudeHooks(_ context.Context, _ config.Config) Result {
 		return Result{OK, fmt.Sprintf("%d/%d hooks present in %s", n, total, claude.SettingsPath())}
 	}
 	return Result{Warn, fmt.Sprintf("%d/%d hooks in %s: run `desk-agent install-hooks`", n, total, claude.SettingsPath())}
+}
+
+// checkBrowserExtension says whether the native-messaging manifests exist and,
+// if the agent is running, which browsers' extensions are connected right now.
+func checkBrowserExtension(_ context.Context, _ config.Config) Result {
+	home, _ := os.UserHomeDir()
+	var have []string
+	for _, t := range nativehost.Targets(home) {
+		if _, err := os.Stat(filepath.Join(t.Dir, nativehost.HostName+".json")); err == nil {
+			have = append(have, t.Browser)
+		}
+	}
+	if len(have) == 0 {
+		return Result{Warn, "native host not installed: run `desk-agent install-native-host`, then load the extension (extension/README.md). Without it no site is reported"}
+	}
+	fams, err := bridge.Query(paths.BrowserSocket())
+	if err != nil {
+		return Result{Warn, "manifest for " + strings.Join(have, ", ") + "; agent not running, cannot tell if an extension is connected"}
+	}
+	if len(fams) == 0 {
+		return Result{Warn, "manifest for " + strings.Join(have, ", ") + ", but no extension is connected (is it loaded and enabled?)"}
+	}
+	return Result{OK, "connected: " + strings.Join(fams, ", ") + " (manifest for " + strings.Join(have, ", ") + ")"}
+}
+
+// checkCatalogs validates sites.toml / apps.toml and reports the adult filter.
+func checkCatalogs(_ context.Context, cfg config.Config) Result {
+	var notes []string
+	level := OK
+	for _, f := range []struct {
+		name, path, scanCmd string
+		parse               func([]byte) (int, error)
+	}{
+		{"sites.toml", cfg.SitesFile, "scan-history", func(b []byte) (int, error) { m, err := catalog.ParseSites(b); return len(m), err }},
+		{"apps.toml", cfg.AppsFile, "scan-apps", func(b []byte) (int, error) { m, err := catalog.ParseApps(b); return len(m), err }},
+	} {
+		data, err := os.ReadFile(f.path)
+		if os.IsNotExist(err) {
+			notes = append(notes, f.name+" missing (built-in seed only; run `desk-agent "+f.scanCmd+"`)")
+			continue
+		}
+		if err != nil {
+			return Result{Fail, err.Error()}
+		}
+		n, err := f.parse(data)
+		if err != nil {
+			return Result{Fail, f.name + ": " + err.Error()}
+		}
+		notes = append(notes, fmt.Sprintf("%s %d entries", f.name, n))
+	}
+	if ad, err := adult.Load(cfg.AdultBlocklistFile); err != nil {
+		level = Warn
+		notes = append(notes, "adult blocklist unreadable: "+err.Error())
+	} else if ad.Len() > 0 {
+		notes = append(notes, fmt.Sprintf("adult filter: heuristics + %d blocklisted hosts", ad.Len()))
+	} else {
+		notes = append(notes, "adult filter: built-in heuristics (no blocklist file)")
+	}
+	return Result{level, strings.Join(notes, "; ")}
 }

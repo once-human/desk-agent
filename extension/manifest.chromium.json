@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "desk-agent",
+  "description": "Tells your local desk-agent which site (hostname only) you are on. Nothing leaves your computer from here.",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA01wZ+vOEj9sSHdfm6v2KeneRTCatRtsF4vf9PWOW98EIgO20qwp2f7KoLm6pwpNh1nJnWa7dEUKYbvxgC0gWzqUFK/SrUfEylF5f2pULIRINTQDwXEldTVG3MaoeTKza3kRf3SzU+DhkzrmYOSpJx6hpqldIEzvWpBsOCDlgDqb1oJMp7QZplI6xm9kUU4YtzuSWUitRD29sKmytdALEj50qRUNIY/oXuLb0iDm9AsQmNHXQjYUpgELGrVpzQo6HDp9MrCCxp1ArRM1DUoERV/RmgTccHtEedrfVGPWIgQx2164SIeG6Fpk8jTLsLqcmUl3FMwgxuItgTFsyzeHSuwIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": ["tabs", "nativeMessaging", "alarms"],
+  "background": { "service_worker": "background.js" },
+  "icons": { "128": "icon.png" }
+}

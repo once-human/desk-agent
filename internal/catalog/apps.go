@@ -5,6 +5,7 @@ package catalog
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -121,4 +122,57 @@ func Prettify(id string) string {
 		words[i] = strings.ToUpper(w[:1]) + w[1:]
 	}
 	return strings.Join(words, " ")
+}
+
+// Has reports whether class resolves to a real entry (not the "unknown app"
+// fallback).
+func (a *Apps) Has(class string) bool {
+	class = strings.ToLower(strings.TrimSpace(class))
+	if _, ok := a.m[class]; ok {
+		return true
+	}
+	if strings.HasPrefix(class, "jetbrains-") {
+		parts := strings.SplitN(class, "-", 3)
+		if len(parts) >= 2 {
+			_, ok := a.m["jetbrains-"+parts[1]]
+			return ok
+		}
+	}
+	return false
+}
+
+// AppCategories are the categories the site understands for apps.
+var AppCategories = []string{"editor", "ide", "terminal", "chat", "design", "browser", "media", "other"}
+
+// ParseApps decodes and validates an apps.toml document.
+func ParseApps(data []byte) (map[string]Entry, error) {
+	raw := map[string]Entry{}
+	md, err := toml.Decode(string(data), &raw)
+	if err != nil {
+		return nil, err
+	}
+	if und := md.Undecoded(); len(und) > 0 {
+		return nil, fmt.Errorf("unknown field %q (allowed: name, category)", und[0].String())
+	}
+	out := make(map[string]Entry, len(raw))
+	for k, v := range raw {
+		key := strings.ToLower(strings.TrimSpace(k))
+		if key == "" || strings.ContainsAny(key, "/ ") {
+			return nil, fmt.Errorf("%q is not a window class", k)
+		}
+		if v.Category == "" {
+			v.Category = "other"
+		}
+		ok := false
+		for _, c := range AppCategories {
+			if c == v.Category {
+				ok = true
+			}
+		}
+		if !ok {
+			return nil, fmt.Errorf("%s: unknown category %q (use one of %s)", k, v.Category, strings.Join(AppCategories, ", "))
+		}
+		out[key] = v
+	}
+	return out, nil
 }

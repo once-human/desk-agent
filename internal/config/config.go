@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -71,11 +72,18 @@ func Load(path string) (Config, error) {
 }
 
 func (c *Config) fillPaths() {
+	c.SitesFile = paths.Expand(c.SitesFile)
+	c.AppsFile = paths.Expand(c.AppsFile)
+	c.AdultBlocklistFile = paths.Expand(c.AdultBlocklistFile)
 	if c.SitesFile == "" {
 		c.SitesFile = paths.SitesFile()
 	}
 	if c.AppsFile == "" {
 		c.AppsFile = paths.AppsFile()
+	}
+	if c.AdultBlocklistFile == "" {
+		// Used only if the file exists; a missing file is fine.
+		c.AdultBlocklistFile = filepath.Join(paths.ConfigDir(), "adult-hosts.txt")
 	}
 }
 
