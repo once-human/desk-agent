@@ -27,8 +27,13 @@ type Queue struct {
 	MaxAge   time.Duration
 	Now      func() time.Time
 
-	mu sync.Mutex
+	mu      sync.Mutex
+	appends int
 }
+
+// trimEvery is how many appends pass between full rewrites that enforce the
+// age and size limits.
+const trimEvery = 100
 
 func New(path string) *Queue {
 	return &Queue{Path: path, MaxLines: DefaultMaxLines, MaxAge: DefaultMaxAge, Now: time.Now}
@@ -41,17 +46,34 @@ func (q *Queue) Append(s sample.Sample) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	lines, err := q.readLocked()
-	if err != nil {
-		return err
-	}
 	b, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
+	// Adding a line is a single small write. The file is only re-read and
+	// trimmed every so often (reads trim as well), so a sample every 30
+	// seconds doesn't rewrite the whole file each time.
+	q.appends++
+	if q.appends%trimEvery != 0 {
+		if err := os.MkdirAll(filepath.Dir(q.Path), 0o700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(q.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		_, werr := f.Write(append(b, '\n'))
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		return werr
+	}
+	lines, err := q.readLocked()
+	if err != nil {
+		return err
+	}
 	lines = append(lines, b)
-	lines = q.trim(lines)
-	return q.writeLocked(lines)
+	return q.writeLocked(q.trim(lines))
 }
 
 // Peek returns up to n of the oldest queued samples without removing them.

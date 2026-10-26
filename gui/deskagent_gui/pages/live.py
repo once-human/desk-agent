@@ -234,7 +234,7 @@ class LivePage(Page):
         icon_box.add_css_class(av)
         icon_box.get_first_child().set_from_icon_name(icon)
         q = send.get("queued") or 0
-        self.deliv_extra.set_text(f"{q} sample{'s' if q != 1 else ''} waiting offline" if q else "Nothing waiting in the offline queue.")
+        self.deliv_extra.set_text((f"{q} sample{'s' if q != 1 else ''} waiting for the next upload" if res in ("ok", "") else f"{q} sample{'s' if q != 1 else ''} waiting offline") if q else "Nothing waiting in the offline queue.")
 
     def _render_timeline(self, st):
         recent = (st or {}).get("recent") or []

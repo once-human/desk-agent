@@ -24,6 +24,7 @@ type Reader struct {
 	lastIdle  uint64
 	lastSelf  uint64
 	lastAt    time.Time
+	lastCPU   float64
 	guiMB     float64
 	guiAt     time.Time
 }
@@ -58,16 +59,20 @@ func (r *Reader) Read() *sample.Sys {
 		s.TotalGB = round1(float64(memTotal) / 1024 / 1024)
 	}
 	s.AgentMB = round1(float64(rssKB(filepath.Join(r.Root, "self", "status"))) / 1024)
+	// The agent's own CPU is measured over at least ten seconds: a reading
+	// taken a moment after the last one (focus changes force an extra sample)
+	// would otherwise turn a few milliseconds of work into a huge percentage.
 	if ticks, ok := selfTicks(filepath.Join(r.Root, "self", "stat")); ok {
-		if !r.lastAt.IsZero() && ticks >= r.lastSelf {
-			secs := now.Sub(r.lastAt).Seconds()
-			if secs > 0 {
-				s.AgentCPU = round1(float64(ticks-r.lastSelf) / clkTck / secs * 100)
-			}
+		secs := now.Sub(r.lastAt).Seconds()
+		switch {
+		case r.lastAt.IsZero() || ticks < r.lastSelf:
+			r.lastSelf, r.lastAt = ticks, now
+		case secs >= 10:
+			r.lastCPU = round1(float64(ticks-r.lastSelf) / clkTck / secs * 100)
+			r.lastSelf, r.lastAt = ticks, now
 		}
-		r.lastSelf = ticks
+		s.AgentCPU = r.lastCPU
 	}
-	r.lastAt = now
 	if b, err := os.ReadFile(filepath.Join(r.Root, "uptime")); err == nil {
 		if f := strings.Fields(string(b)); len(f) > 0 {
 			if v, err := strconv.ParseFloat(f[0], 64); err == nil {

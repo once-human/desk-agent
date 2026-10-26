@@ -71,6 +71,7 @@ class PrivacyPage(Page):
         for key, title, sub, lo, hi, step in (
             ("interval_s", "Update interval", "Seconds between heartbeats while you're active", 5, 600, 5),
             ("idle_interval_s", "Idle interval", "Seconds between heartbeats while you're idle", 10, 1800, 10),
+            ("upload_every_s", "Upload every", "Seconds between uploads (samples are batched). 0 sends each one at once", 0, 3600, 60),
             ("active_window_s", "Counts as active for", "Seconds after your last input that still count as at the computer", 30, 3600, 30),
         ):
             sr = Adw.SpinRow.new_with_range(lo, hi, step)

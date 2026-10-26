@@ -24,6 +24,10 @@ type Config struct {
 	IntervalS int `toml:"interval_s"`
 	// IdleIntervalS is the heartbeat while idle.
 	IdleIntervalS int `toml:"idle_interval_s"`
+	// UploadEveryS is how often collected samples are uploaded. Sampling stays
+	// at interval_s; this only batches the uploads so the site's database can
+	// sleep in between. 0 uploads every sample as it happens.
+	UploadEveryS int `toml:"upload_every_s"`
 	// ActiveWindowS is how recent the last input must be for active=true.
 	ActiveWindowS int `toml:"active_window_s"`
 	// Private sends presence only (active/idle/lid): no app, site, repo,
@@ -47,6 +51,7 @@ func Default() Config {
 		Endpoint:      DefaultEndpoint,
 		IntervalS:     30,
 		IdleIntervalS: 60,
+		UploadEveryS:  900,
 		ActiveWindowS: 180,
 		Battery:       true,
 	}
@@ -98,6 +103,9 @@ func (c *Config) Validate() error {
 	if c.IdleIntervalS < c.IntervalS {
 		return fmt.Errorf("idle_interval_s (%d) must be >= interval_s (%d)", c.IdleIntervalS, c.IntervalS)
 	}
+	if c.UploadEveryS != 0 && (c.UploadEveryS < 30 || c.UploadEveryS > 3600) {
+		return fmt.Errorf("upload_every_s must be 0 or between 30 and 3600 (got %d)", c.UploadEveryS)
+	}
 	if c.ActiveWindowS < 30 {
 		return fmt.Errorf("active_window_s must be >= 30 (got %d)", c.ActiveWindowS)
 	}
@@ -124,6 +132,11 @@ endpoint = "` + DefaultEndpoint + `"
 # site, lid closed...) are sent immediately regardless.
 interval_s = 30
 idle_interval_s = 60
+
+# How often collected samples are uploaded, in seconds. Samples are still
+# taken every interval_s; they are sent in one batch. A longer gap lets the
+# site's free database sleep between uploads. 0 uploads each sample at once.
+upload_every_s = 900
 
 # Input within this many seconds counts as "active".
 active_window_s = 180

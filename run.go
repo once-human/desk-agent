@@ -85,6 +85,7 @@ func cmdRun(ctx context.Context) error {
 		k, _, err := config.Key()
 		return k, err
 	}, queue.New(paths.QueueFile()), log)
+	snd.SetEvery(time.Duration(cfg.UploadEveryS) * time.Second)
 	go snd.Run(ctx)
 
 	eng := engine.New(cfg, apps0, snd, log)
@@ -125,6 +126,7 @@ func cmdRun(ctx context.Context) error {
 		apps.Store(a)
 		sites.Store(st)
 		ad.Store(f)
+		snd.SetEvery(time.Duration(c.UploadEveryS) * time.Second)
 		eng.Reconfigure(c, a)
 		if refreshSite != nil {
 			refreshSite()

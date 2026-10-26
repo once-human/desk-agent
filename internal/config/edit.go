@@ -31,6 +31,7 @@ const (
 var Keys = map[string]Kind{
 	"interval_s":           KindInt,
 	"idle_interval_s":      KindInt,
+	"upload_every_s":       KindInt,
 	"active_window_s":      KindInt,
 	"private":              KindBool,
 	"battery":              KindBool,

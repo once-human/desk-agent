@@ -13,6 +13,16 @@ RestartSec=5
 # Give the final "not active" sample time to leave on shutdown.
 TimeoutStopSec=8
 
+# Stay out of the way: lowest CPU and disk priority, a small cap on CPU, and a
+# memory ceiling far above what it uses (about 12 MB).
+Nice=19
+CPUWeight=10
+IOWeight=10
+IOSchedulingClass=idle
+CPUQuota=10%
+MemoryHigh=48M
+MemoryMax=96M
+
 # Light hardening. Deliberately no ProtectHome/ProtectSystem: the agent has to
 # read ~/.config, ~/.claude and the .git directories it resolves repo names from.
 NoNewPrivileges=yes

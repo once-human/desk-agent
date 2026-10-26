@@ -22,6 +22,9 @@ const (
 	maxBatch   = 500
 	minBackoff = 2 * time.Second
 	maxBackoff = 60 * time.Second
+	// flipGap is the shortest gap between uploads triggered by a change of
+	// active/idle rather than by the schedule.
+	flipGap = 5 * time.Minute
 )
 
 type outcome int
@@ -49,6 +52,36 @@ type Sender struct {
 	offline bool
 	wake    chan struct{}
 	stats   Stats
+
+	// every is how often samples are delivered. 0 sends each one as it
+	// happens. A longer gap lets the site's database sleep in between.
+	every     time.Duration
+	lastFlush time.Time
+	// lastActive is the previous buffered sample's active flag; a change
+	// (you sat down, you walked away) is worth an early upload.
+	lastActive *bool
+	// flushMu keeps one reader of the queue at a time (peek, post, drop).
+	flushMu sync.Mutex
+}
+
+// SetEvery sets how often samples are uploaded; 0 means immediately. Safe to
+// call while running (a config reload).
+func (s *Sender) SetEvery(d time.Duration) {
+	s.mu.Lock()
+	s.every = d
+	s.mu.Unlock()
+	if d <= 0 {
+		select {
+		case s.wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (s *Sender) batching() (time.Duration, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.every, s.every > 0
 }
 
 // Stats describes the most recent delivery attempts, for the GUI and status.
@@ -101,6 +134,10 @@ func New(endpoint, ua string, key func() (string, error), q *queue.Queue, log *s
 
 // Send delivers s now, or queues it if offline or the send fails.
 func (s *Sender) Send(ctx context.Context, smp sample.Sample) {
+	if every, ok := s.batching(); ok {
+		s.buffer(smp, every)
+		return
+	}
 	s.mu.Lock()
 	off := s.offline
 	s.mu.Unlock()
@@ -108,7 +145,7 @@ func (s *Sender) Send(ctx context.Context, smp sample.Sample) {
 		s.enqueue(smp)
 		return
 	}
-	switch s.post(ctx, []sample.Sample{smp}) {
+	switch s.post(ctx, []sample.Sample{smp}, 0) {
 	case sent:
 	case retry:
 		s.enqueue(smp)
@@ -122,9 +159,76 @@ func (s *Sender) Send(ctx context.Context, smp sample.Sample) {
 func (s *Sender) SendFinal(smp sample.Sample, timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	if s.post(ctx, []sample.Sample{smp}) == retry {
+	if _, ok := s.batching(); ok {
+		// Everything waiting goes out with it, and nothing more is coming.
+		if err := s.Queue.Append(smp); err != nil {
+			s.Log.Error("queue append failed", "err", err)
+			return
+		}
+		if s.flushMu.TryLock() {
+			defer s.flushMu.Unlock()
+			for ctx.Err() == nil {
+				n, o, err := s.flushLocked(ctx, 0)
+				if err != nil || n == 0 || o == retry {
+					break
+				}
+			}
+			// The next sample (the lid opening, say) goes out right away.
+			s.mu.Lock()
+			s.lastFlush = time.Time{}
+			s.mu.Unlock()
+		}
+		return
+	}
+	if s.post(ctx, []sample.Sample{smp}, 0) == retry {
 		s.enqueue(smp)
 	}
+}
+
+// buffer holds a sample for the next upload and wakes the flusher when one
+// is due (the first sample after starting, or every's worth since the last).
+func (s *Sender) buffer(smp sample.Sample, every time.Duration) {
+	if err := s.Queue.Append(smp); err != nil {
+		s.Log.Error("queue append failed", "err", err)
+		return
+	}
+	s.mu.Lock()
+	since := time.Since(s.lastFlush)
+	flipped := s.lastActive != nil && *s.lastActive != smp.Active
+	a := smp.Active
+	s.lastActive = &a
+	// Due on the schedule, or because you sat down / walked away, but never
+	// more often than every few minutes so the database can still sleep.
+	due := s.lastFlush.IsZero() || since >= every || (flipped && since >= flipGap)
+	s.mu.Unlock()
+	if due {
+		select {
+		case s.wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// flushLocked uploads the oldest batch and drops it once the site has it.
+// The caller holds flushMu. n is how many samples were in the batch.
+func (s *Sender) flushLocked(ctx context.Context, nextS int) (n int, o outcome, err error) {
+	batch, err := s.Queue.Peek(maxBatch)
+	if err != nil {
+		return 0, retry, err
+	}
+	if len(batch) == 0 {
+		return 0, sent, nil
+	}
+	o = s.post(ctx, batch, nextS)
+	if o == sent || o == discard {
+		_ = s.Queue.Drop(len(batch))
+	}
+	if o == sent {
+		s.mu.Lock()
+		s.lastFlush = time.Now()
+		s.mu.Unlock()
+	}
+	return len(batch), o, nil
 }
 
 func (s *Sender) enqueue(smp sample.Sample) {
@@ -147,7 +251,10 @@ func (s *Sender) Run(ctx context.Context) {
 		s.mu.Lock()
 		s.offline = true
 		s.mu.Unlock()
-		s.wake <- struct{}{}
+		select {
+		case s.wake <- struct{}{}:
+		default: // a wake-up is already waiting
+		}
 	}
 	backoff := minBackoff
 	for {
@@ -157,12 +264,16 @@ func (s *Sender) Run(ctx context.Context) {
 		case <-s.wake:
 		}
 		for ctx.Err() == nil {
-			batch, err := s.Queue.Peek(maxBatch)
+			every, _ := s.batching()
+			next := int(every / time.Second)
+			s.flushMu.Lock()
+			n, o, err := s.flushLocked(ctx, next)
+			s.flushMu.Unlock()
 			if err != nil {
 				s.Log.Error("queue read failed", "err", err)
 				break
 			}
-			if len(batch) == 0 {
+			if n == 0 {
 				_ = s.Queue.Drop(maxBatch) // clears expired leftovers
 				s.mu.Lock()
 				s.offline = false
@@ -170,9 +281,8 @@ func (s *Sender) Run(ctx context.Context) {
 				backoff = minBackoff
 				break
 			}
-			switch s.post(ctx, batch) {
+			switch o {
 			case sent, discard:
-				_ = s.Queue.Drop(len(batch))
 				backoff = minBackoff
 			case retry:
 				select {
@@ -188,14 +298,14 @@ func (s *Sender) Run(ctx context.Context) {
 	}
 }
 
-func (s *Sender) post(ctx context.Context, batch []sample.Sample) outcome {
+func (s *Sender) post(ctx context.Context, batch []sample.Sample, nextS int) outcome {
 	key, err := s.Key()
 	if err != nil {
 		s.Log.Error("no site key", "err", err)
 		s.record("nokey", 0)
 		return retry
 	}
-	body, err := json.Marshal(sample.Batch{Samples: batch})
+	body, err := json.Marshal(sample.Batch{Samples: batch, NextS: nextS})
 	if err != nil {
 		s.Log.Error("encode failed", "err", err)
 		return discard

@@ -191,6 +191,7 @@ signing, or Developer Edition).
 | `endpoint` | the site's ingest URL | Where samples go. Must be `https://` (localhost is allowed for testing) |
 | `interval_s` | `30` | Heartbeat while active. Changes are sent immediately regardless |
 | `idle_interval_s` | `60` | Heartbeat while idle |
+| `upload_every_s` | `900` | How often collected samples are uploaded, in one batch. Sampling still follows the intervals above; a longer gap lets the site's free database sleep between uploads. `0` uploads each sample as it happens |
 | `active_window_s` | `180` | Input within this many seconds counts as active |
 | `private` | `false` | Presence only: no app, site, repo, Claude state, media or battery |
 | `hide_repos` | `[]` | Repo names never reported |

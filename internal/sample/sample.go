@@ -119,6 +119,10 @@ func (s Sample) Signature() string {
 // Batch is the request body.
 type Batch struct {
 	Samples []Sample `json:"samples"`
+	// NextS is how many seconds until the next upload (0 when the agent is
+	// stopping or has nothing more coming), so the site can tell "between
+	// uploads" from "laptop off".
+	NextS int `json:"next_s,omitempty"`
 }
 
 func Int(v int) *int       { return &v }
