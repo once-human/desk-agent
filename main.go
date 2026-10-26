@@ -30,6 +30,7 @@ Usage:
   desk-agent set-key         store the site key (reads stdin, mode 600)
   desk-agent pause           stop sending; the site shows the laptop as away
   desk-agent resume          start sending again
+  desk-agent toggle          pause if running, resume if paused (for a keybind)
   desk-agent status          show whether the agent is paused
   desk-agent install-hooks   add Claude Code hooks to ~/.claude/settings.json (merges)
   desk-agent uninstall-hooks remove only the hooks desk-agent added
@@ -81,6 +82,8 @@ func main() {
 		err = cmdInit()
 	case "set-key":
 		err = cmdSetKey()
+	case "toggle":
+		err = cmdPause(!control.PausedFlag())
 	case "pause":
 		err = cmdPause(true)
 	case "resume":

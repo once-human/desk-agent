@@ -1,0 +1,28 @@
+[Unit]
+Description=desk-agent: live laptop status for the portfolio site
+Documentation=https://github.com/once-human/desk-agent
+# Ordering only (no hard dependency): the agent copes with Hyprland and the
+# Wayland socket appearing a little later, and retries.
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@BINARY@ run
+Restart=on-failure
+RestartSec=5
+# Give the final "not active" sample time to leave on shutdown.
+TimeoutStopSec=8
+
+# Light hardening. Deliberately no ProtectHome/ProtectSystem: the agent has to
+# read ~/.config, ~/.claude and the .git directories it resolves repo names from.
+NoNewPrivileges=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+RestrictRealtime=yes
+
+[Install]
+# default.target, not graphical-session.target: that target is only reached
+# under a systemd-aware session manager (e.g. uwsm), not when Hyprland is
+# started from a tty.
+WantedBy=default.target

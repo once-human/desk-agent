@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then echo "needs gofmt:"; echo "$out"; exit 1; fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: build (static, CGO off)
+        run: CGO_ENABLED=0 go build -trimpath -o bin/desk-agent .
+
+      - name: unit tests
+        run: go test -race -count=1 ./...
+
+      - name: end-to-end smoke tests (fake Hyprland, fake ingest server, real binary)
+        run: |
+          python3 test/e2e/agent_smoke.py
+          python3 test/e2e/hooks_smoke.py
+
+      - name: D-Bus integration tests (private dbus-daemon, fake services)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq dbus
+          go test -count=1 -tags dbustest ./internal/mpris ./internal/logind
+
+      - name: extension manifests and script are valid
+        run: |
+          python3 -c "import json;[json.load(open('extension/manifest.%s.json' % b)) for b in ('chromium','firefox')]"
+          node --check extension/background.js
+          extension/build.sh
+
+      - name: installer script is valid shell
+        run: bash -n install.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desk-agent-linux-amd64
+          path: bin/desk-agent
