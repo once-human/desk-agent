@@ -191,7 +191,8 @@ signing, or Developer Edition).
 | `endpoint` | the site's ingest URL | Where samples go. Must be `https://` (localhost is allowed for testing) |
 | `interval_s` | `30` | Heartbeat while active. Changes are sent immediately regardless |
 | `idle_interval_s` | `60` | Heartbeat while idle |
-| `upload_every_s` | `900` | How often collected samples are uploaded, in one batch. Sampling still follows the intervals above; a longer gap lets the site's free database sleep between uploads. `0` uploads each sample as it happens |
+| `upload_every_s` | `900` | How often collected samples are uploaded, in one batch. Sampling still follows the intervals above; a longer gap lets the site's free database sleep between uploads. Used by `push_mode = "default"`; `0` uploads each sample as it happens |
+| `push_mode` | `"default"` | How eagerly samples reach the site. `realtime`: every sample at once (for demos; goes back to `default` after 2 hours, since it keeps the site's database awake). `default`: calls, Claude Code starting or stopping, and you sitting down or walking away go out at once (at most every minute for calls, every 5 for the rest), everything else waits for `upload_every_s`. `15min` / `30min`: everything is batched, calls included. The last sample before suspend or shutdown always goes out straight away. Also a selector in the settings app (Privacy → Sending) |
 | `active_window_s` | `180` | Input within this many seconds counts as active |
 | `private` | `false` | Presence only: no app, site, repo, Claude state, media or battery |
 | `hide_repos` | `[]` | Repo names never reported |

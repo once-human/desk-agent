@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -28,6 +29,11 @@ type Config struct {
 	// at interval_s; this only batches the uploads so the site's database can
 	// sleep in between. 0 uploads every sample as it happens.
 	UploadEveryS int `toml:"upload_every_s"`
+	// PushMode is how eagerly samples reach the site: "realtime" (every sample
+	// at once), "default" (calls and other big changes at once, the rest
+	// batched every upload_every_s), "15min" or "30min" (everything batched,
+	// calls included). See PushPolicy.
+	PushMode string `toml:"push_mode"`
 	// ActiveWindowS is how recent the last input must be for active=true.
 	ActiveWindowS int `toml:"active_window_s"`
 	// Private sends presence only (active/idle/lid): no app, site, repo,
@@ -52,6 +58,7 @@ func Default() Config {
 		IntervalS:     30,
 		IdleIntervalS: 60,
 		UploadEveryS:  900,
+		PushMode:      PushDefault,
 		ActiveWindowS: 180,
 		Battery:       true,
 	}
@@ -106,10 +113,38 @@ func (c *Config) Validate() error {
 	if c.UploadEveryS != 0 && (c.UploadEveryS < 30 || c.UploadEveryS > 3600) {
 		return fmt.Errorf("upload_every_s must be 0 or between 30 and 3600 (got %d)", c.UploadEveryS)
 	}
+	switch c.PushMode {
+	case PushRealtime, PushDefault, Push15, Push30:
+	default:
+		return fmt.Errorf("push_mode must be realtime, default, 15min or 30min (got %q)", c.PushMode)
+	}
 	if c.ActiveWindowS < 30 {
 		return fmt.Errorf("active_window_s must be >= 30 (got %d)", c.ActiveWindowS)
 	}
 	return nil
+}
+
+// Push modes.
+const (
+	PushRealtime = "realtime"
+	PushDefault  = "default"
+	Push15       = "15min"
+	Push30       = "30min"
+)
+
+// PushPolicy turns push_mode into what the sender needs: how long samples are
+// held between uploads (0 = send each at once) and whether big changes (a call
+// starting or ending, you sitting down or walking away) skip the wait.
+func (c Config) PushPolicy() (every time.Duration, live bool) {
+	switch c.PushMode {
+	case PushRealtime:
+		return 0, false
+	case Push15:
+		return 15 * time.Minute, false
+	case Push30:
+		return 30 * time.Minute, false
+	}
+	return time.Duration(c.UploadEveryS) * time.Second, true
 }
 
 // HidesRepo reports whether name is listed in hide_repos (case-insensitive).
@@ -137,6 +172,17 @@ idle_interval_s = 60
 # taken every interval_s; they are sent in one batch. A longer gap lets the
 # site's free database sleep between uploads. 0 uploads each sample at once.
 upload_every_s = 900
+
+# How eagerly samples are pushed to the site:
+#   "realtime"  every sample the moment it is taken (for demos; keeps the
+#               site's database awake, so the agent drops back to "default"
+#               after two hours)
+#   "default"   calls and other big changes at once, everything else batched
+#               every upload_every_s
+#   "15min"     everything batched every 15 minutes, calls included
+#   "30min"     everything batched every 30 minutes, calls included
+# The final sample before suspend or shutdown always goes out straight away.
+push_mode = "default"
 
 # Input within this many seconds counts as "active".
 active_window_s = 180

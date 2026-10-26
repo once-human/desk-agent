@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"runtime/debug"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -34,6 +35,10 @@ import (
 	"github.com/once-human/desk-agent/internal/site"
 	"github.com/once-human/desk-agent/internal/sysstat"
 )
+
+// realtimeMax is how long push_mode = "realtime" stays on before the agent
+// switches it back to "default".
+const realtimeMax = 2 * time.Hour
 
 // cmdRun is what the systemd service executes.
 func cmdRun(ctx context.Context) error {
@@ -85,7 +90,7 @@ func cmdRun(ctx context.Context) error {
 		k, _, err := config.Key()
 		return k, err
 	}, queue.New(paths.QueueFile()), log)
-	snd.SetEvery(time.Duration(cfg.UploadEveryS) * time.Second)
+	snd.SetPolicy(cfg.PushPolicy())
 	go snd.Run(ctx)
 
 	eng := engine.New(cfg, apps0, snd, log)
@@ -102,8 +107,40 @@ func cmdRun(ctx context.Context) error {
 
 	// refreshSite is defined below; reload and state need it, so declare first.
 	var refreshSite func()
+	var reload func() error
 
-	reload := func() error {
+	// Realtime keeps the site's database awake the whole time, so it is for
+	// showing something off, not for leaving on: two hours after it is chosen
+	// the setting goes back to default (written to config.toml so the settings
+	// app shows it too).
+	var rtMu sync.Mutex
+	var rtTimer *time.Timer
+	watchRealtime := func(mode string) {
+		rtMu.Lock()
+		defer rtMu.Unlock()
+		if mode != config.PushRealtime {
+			if rtTimer != nil {
+				rtTimer.Stop()
+				rtTimer = nil
+			}
+			return
+		}
+		if rtTimer != nil {
+			return // already counting down
+		}
+		rtTimer = time.AfterFunc(realtimeMax, func() {
+			log.Info("realtime push has been on for a while, going back to default")
+			if err := config.Set(paths.ConfigFile(), "push_mode", []string{config.PushDefault}); err != nil {
+				log.Warn("could not switch push_mode back to default", "err", err)
+				return
+			}
+			if err := reload(); err != nil {
+				log.Warn("reload after realtime timeout failed", "err", err)
+			}
+		})
+	}
+
+	reload = func() error {
 		c, err := config.Load(paths.ConfigFile())
 		if err != nil {
 			return err
@@ -126,13 +163,15 @@ func cmdRun(ctx context.Context) error {
 		apps.Store(a)
 		sites.Store(st)
 		ad.Store(f)
-		snd.SetEvery(time.Duration(c.UploadEveryS) * time.Second)
+		snd.SetPolicy(c.PushPolicy())
+		watchRealtime(c.PushMode)
 		eng.Reconfigure(c, a)
 		if refreshSite != nil {
 			refreshSite()
 		}
 		return nil
 	}
+	watchRealtime(cfg.PushMode)
 	endpointHost := ""
 	if u, err := url.Parse(cfg.Endpoint); err == nil {
 		endpointHost = u.Host

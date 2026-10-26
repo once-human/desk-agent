@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/once-human/desk-agent/internal/paths"
 )
@@ -80,6 +81,7 @@ func TestValidation(t *testing.T) {
 		"tiny interval":   `interval_s = 1`,
 		"idle < interval": "interval_s = 60\nidle_interval_s = 30",
 		"tiny active":     `active_window_s = 5`,
+		"unknown push":    `push_mode = "turbo"`,
 		"not toml":        `interval_s = [`,
 	}
 	for name, body := range bad {
@@ -208,5 +210,47 @@ func TestSetWritesAtomicallyAndCreatesFromDefault(t *testing.T) {
 	m := c.Map()
 	if _, leaked := m["key"]; leaked || m["hide_repos"] == nil {
 		t.Errorf("Map: %v", m)
+	}
+}
+
+func TestPushPolicy(t *testing.T) {
+	d := sandbox(t)
+	cases := []struct {
+		mode  string
+		every time.Duration
+		live  bool
+	}{
+		{PushRealtime, 0, false},
+		{PushDefault, 15 * time.Minute, true},
+		{Push15, 15 * time.Minute, false},
+		{Push30, 30 * time.Minute, false},
+	}
+	for _, c := range cases {
+		p := filepath.Join(d, "c.toml")
+		os.WriteFile(p, []byte(`push_mode = "`+c.mode+`"`), 0o600)
+		cfg, err := Load(p)
+		if err != nil {
+			t.Fatalf("%s: %v", c.mode, err)
+		}
+		every, live := cfg.PushPolicy()
+		if every != c.every || live != c.live {
+			t.Errorf("%s: got %v/%v, want %v/%v", c.mode, every, live, c.every, c.live)
+		}
+	}
+	// A config written before push_mode existed behaves as default, and the
+	// mode is settable and reported.
+	def, _ := Load(filepath.Join(d, "missing.toml"))
+	if def.PushMode != PushDefault {
+		t.Errorf("missing config: push_mode = %q", def.PushMode)
+	}
+	if _, err := ApplyEdit(DefaultTOML, "push_mode", []string{"30min"}); err != nil {
+		t.Errorf("setting push_mode: %v", err)
+	}
+	if _, err := ApplyEdit(DefaultTOML, "push_mode", []string{"turbo"}); err == nil {
+		t.Error("an unknown push_mode was accepted")
+	}
+	m := def.Map()
+	if m["push_mode"] != PushDefault || m["upload_every_s"] != 900 {
+		t.Errorf("Map() = %v", m)
 	}
 }

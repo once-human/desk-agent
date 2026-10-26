@@ -25,6 +25,9 @@ const (
 	// flipGap is the shortest gap between uploads triggered by a change of
 	// active/idle rather than by the schedule.
 	flipGap = 5 * time.Minute
+	// callGap is the shortest gap before a call starting or ending is pushed
+	// early; calls are rare, so it is short.
+	callGap = time.Minute
 )
 
 type outcome int
@@ -57,18 +60,26 @@ type Sender struct {
 	// happens. A longer gap lets the site's database sleep in between.
 	every     time.Duration
 	lastFlush time.Time
-	// lastActive is the previous buffered sample's active flag; a change
-	// (you sat down, you walked away) is worth an early upload.
-	lastActive *bool
+	// live lets big changes skip the wait: a call starting or ending, Claude
+	// Code starting or stopping, you sitting down or walking away. Off, even a
+	// call waits for the next upload.
+	live bool
+	// last* are the previous buffered sample's flags, to spot those changes.
+	lastActive, lastCall, lastClaude *bool
 	// flushMu keeps one reader of the queue at a time (peek, post, drop).
 	flushMu sync.Mutex
 }
 
-// SetEvery sets how often samples are uploaded; 0 means immediately. Safe to
-// call while running (a config reload).
-func (s *Sender) SetEvery(d time.Duration) {
+// SetEvery sets how often samples are uploaded; 0 means immediately. Big
+// changes wait for the next upload. Safe to call while running.
+func (s *Sender) SetEvery(d time.Duration) { s.SetPolicy(d, false) }
+
+// SetPolicy sets how often samples are uploaded (0 = immediately) and whether
+// big changes are pushed early (see live). Safe to call while running (a
+// config reload).
+func (s *Sender) SetPolicy(d time.Duration, live bool) {
 	s.mu.Lock()
-	s.every = d
+	s.every, s.live = d, live
 	s.mu.Unlock()
 	if d <= 0 {
 		select {
@@ -194,12 +205,18 @@ func (s *Sender) buffer(smp sample.Sample, every time.Duration) {
 	}
 	s.mu.Lock()
 	since := time.Since(s.lastFlush)
+	claude := smp.Claude != nil && *smp.Claude
 	flipped := s.lastActive != nil && *s.lastActive != smp.Active
-	a := smp.Active
-	s.lastActive = &a
-	// Due on the schedule, or because you sat down / walked away, but never
-	// more often than every few minutes so the database can still sleep.
-	due := s.lastFlush.IsZero() || since >= every || (flipped && since >= flipGap)
+	callFlip := s.lastCall != nil && *s.lastCall != smp.Call
+	claudeFlip := s.lastClaude != nil && *s.lastClaude != claude
+	a, c := smp.Active, smp.Call
+	s.lastActive, s.lastCall, s.lastClaude = &a, &c, &claude
+	// Due on the schedule or, when live, because something big changed. Even
+	// then never more often than a few minutes so the database can still sleep.
+	due := s.lastFlush.IsZero() || since >= every
+	if s.live {
+		due = due || (callFlip && since >= callGap) || ((flipped || claudeFlip) && since >= flipGap)
+	}
 	s.mu.Unlock()
 	if due {
 		select {

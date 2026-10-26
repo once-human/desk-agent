@@ -138,7 +138,7 @@ func TestBatchingUploadsEarlyWhenYouWalkAway(t *testing.T) {
 	}))
 	defer srv.Close()
 	s := newSender(t, srv.URL, okKey)
-	s.SetEvery(15 * time.Minute)
+	s.SetPolicy(15*time.Minute, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go s.Run(ctx)
@@ -159,4 +159,73 @@ func TestBatchingUploadsEarlyWhenYouWalkAway(t *testing.T) {
 	s.mu.Unlock()
 	s.Send(ctx, mk(2, true))
 	waitFor(t, func() bool { return got.Load() == 3 })
+}
+
+// A call starting is pushed early (after a short gap) in live mode.
+func TestLiveModePushesCallsEarly(t *testing.T) {
+	var got atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b sample.Batch
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		got.Add(int64(len(b.Samples)))
+	}))
+	defer srv.Close()
+	s := newSender(t, srv.URL, okKey)
+	s.SetPolicy(15*time.Minute, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	mk := func(n int, call bool) sample.Sample {
+		return sample.Sample{T: time.Date(2026, 10, 26, 10, 0, n*30, 0, time.UTC).Format(time.RFC3339), Active: true, Call: call}
+	}
+	s.Send(ctx, mk(0, false))
+	waitFor(t, func() bool { return got.Load() == 1 })
+	// An ordinary sample just waits.
+	s.Send(ctx, mk(1, false))
+	time.Sleep(100 * time.Millisecond)
+	if got.Load() != 1 {
+		t.Fatalf("ordinary sample uploaded early: %d", got.Load())
+	}
+	// A call starting is not held for the 15 minutes once the short gap has passed.
+	s.mu.Lock()
+	s.lastFlush = time.Now().Add(-2 * time.Minute)
+	s.mu.Unlock()
+	s.Send(ctx, mk(2, true))
+	waitFor(t, func() bool { return got.Load() == 3 })
+}
+
+// In the slow modes nothing jumps the queue, calls included.
+func TestSlowModeHoldsEvenCalls(t *testing.T) {
+	var got atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b sample.Batch
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		got.Add(int64(len(b.Samples)))
+	}))
+	defer srv.Close()
+	s := newSender(t, srv.URL, okKey)
+	s.SetPolicy(30*time.Minute, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	mk := func(n int, active, call bool) sample.Sample {
+		return sample.Sample{T: time.Date(2026, 10, 26, 10, 0, n*30, 0, time.UTC).Format(time.RFC3339), Active: active, Call: call}
+	}
+	s.Send(ctx, mk(0, true, false))
+	waitFor(t, func() bool { return got.Load() == 1 })
+	s.mu.Lock()
+	s.lastFlush = time.Now().Add(-10 * time.Minute)
+	s.mu.Unlock()
+	s.Send(ctx, mk(1, true, true))  // call starts
+	s.Send(ctx, mk(2, false, true)) // walks away
+	time.Sleep(150 * time.Millisecond)
+	if got.Load() != 1 {
+		t.Fatalf("slow mode uploaded early: %d", got.Load())
+	}
+	// ...but the schedule still works.
+	s.mu.Lock()
+	s.lastFlush = time.Now().Add(-31 * time.Minute)
+	s.mu.Unlock()
+	s.Send(ctx, mk(3, true, false))
+	waitFor(t, func() bool { return got.Load() == 4 })
 }

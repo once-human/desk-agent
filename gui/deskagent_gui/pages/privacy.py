@@ -20,6 +20,15 @@ NEVER = [
 ]
 
 
+# push_mode values, in the order the selector lists them.
+PUSH_MODES = [
+    ("realtime", "Realtime", "Every update the moment it happens, for showing it off. Keeps the site's database awake, so it goes back to Default after 2 hours."),
+    ("default", "Default", "Calls and other big changes go out at once; everything else (YouTube, app switches) is batched."),
+    ("15min", "Every 15 minutes", "Everything is batched, calls included. Saves the most; the site lags by up to 15 minutes."),
+    ("30min", "Every 30 minutes", "Everything is batched, calls included. Lightest on resources; the site lags by up to 30 minutes."),
+]
+
+
 class PrivacyPage(Page):
     title = "Privacy"
 
@@ -68,10 +77,14 @@ class PrivacyPage(Page):
         # ---- timing + battery ----
         self.grp = Adw.PreferencesGroup(title="Sending")
         self.spin: dict[str, Adw.SpinRow] = {}
+        self.push = Adw.ComboRow(title="Push to the site")
+        self.push.set_model(Gtk.StringList.new([m[1] for m in PUSH_MODES]))
+        self.push.connect("notify::selected", self._push_changed)
+        self.grp.add(self.push)
         for key, title, sub, lo, hi, step in (
             ("interval_s", "Update interval", "Seconds between heartbeats while you're active", 5, 600, 5),
             ("idle_interval_s", "Idle interval", "Seconds between heartbeats while you're idle", 10, 1800, 10),
-            ("upload_every_s", "Upload every", "Seconds between uploads (samples are batched). 0 sends each one at once", 0, 3600, 60),
+            ("upload_every_s", "Upload every", "Default mode only: seconds between background uploads. 0 sends each one at once", 0, 3600, 60),
             ("active_window_s", "Counts as active for", "Seconds after your last input that still count as at the computer", 30, 3600, 30),
         ):
             sr = Adw.SpinRow.new_with_range(lo, hi, step)
@@ -101,6 +114,11 @@ class PrivacyPage(Page):
             for k, sr in self.spin.items():
                 sr.set_value(v.get(k, sr.get_value()))
             self.battery.set_active(bool(v.get("battery")))
+            mode = v.get("push_mode") or "default"
+            idx = next((i for i, m in enumerate(PUSH_MODES) if m[0] == mode), 1)
+            self.push.set_selected(idx)
+            self.push.set_subtitle(PUSH_MODES[idx][2])
+            self.spin["upload_every_s"].set_sensitive(mode == "default")
             clear(self.chips)
             repos = v.get("hide_repos") or []
             if not repos:
@@ -141,6 +159,17 @@ class PrivacyPage(Page):
         if self._syncing:
             return
         self.ctx.apply(lambda: self.ctx.backend.config_set("battery", "true" if row.get_active() else "false"))
+
+    def _push_changed(self, row, _p):
+        if self._syncing:
+            return
+        idx = row.get_selected()
+        if idx >= len(PUSH_MODES):
+            return
+        mode = PUSH_MODES[idx][0]
+        row.set_subtitle(PUSH_MODES[idx][2])
+        self.spin["upload_every_s"].set_sensitive(mode == "default")
+        self.ctx.apply(lambda: self.ctx.backend.config_set("push_mode", mode), after=self.on_show)
 
     def _spin_changed(self, key, row):
         if self._syncing:

@@ -32,6 +32,7 @@ var Keys = map[string]Kind{
 	"interval_s":           KindInt,
 	"idle_interval_s":      KindInt,
 	"upload_every_s":       KindInt,
+	"push_mode":            KindString,
 	"active_window_s":      KindInt,
 	"private":              KindBool,
 	"battery":              KindBool,
@@ -144,6 +145,7 @@ func (c Config) Map() map[string]any {
 	}
 	return map[string]any{
 		"endpoint": c.Endpoint, "interval_s": c.IntervalS, "idle_interval_s": c.IdleIntervalS,
+		"upload_every_s": c.UploadEveryS, "push_mode": c.PushMode,
 		"active_window_s": c.ActiveWindowS, "private": c.Private, "battery": c.Battery,
 		"hide_repos": hide, "sites_file": c.SitesFile, "apps_file": c.AppsFile,
 		"adult_blocklist_file": c.AdultBlocklistFile,
