@@ -2,3 +2,5 @@ bin/
 *.test
 /desk-agent
 extension/dist/
+__pycache__/
+*.pyc

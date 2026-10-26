@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Desk Agent
+GenericName=Presence agent
+Comment=See and control what this laptop shares with your site
+Exec=@EXEC@
+Icon=in.onkaryaglewad.DeskAgent
+Terminal=false
+StartupNotify=true
+Categories=Utility;GTK;
+Keywords=presence;privacy;status;desk;
+StartupWMClass=in.onkaryaglewad.DeskAgent

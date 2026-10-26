@@ -1,0 +1,133 @@
+/* Material You inspired styling. Colours are double-@ placeholders filled by
+   theme.render_css from one seed colour, in light and dark. */
+
+window.md-window { background: @@surface_container@@; color: @@on_surface@@; }
+.md-pane { background: @@surface@@; border-radius: 28px; margin: 8px 8px 8px 0; }
+.md-pane.compact { margin: 0; border-radius: 0; }
+.md-rail { background: transparent; padding: 12px 8px; min-width: 80px; }
+.md-rail.compact { padding: 6px 4px; background: @@surface_container@@; }
+
+/* ---- navigation rail / bar ---- */
+button.md-nav { background: none; box-shadow: none; border: none; padding: 6px 4px; min-width: 64px; min-height: 0; border-radius: 16px; color: @@on_surface_variant@@; }
+button.md-nav:hover { background: none; }
+button.md-nav .md-nav-pill { min-width: 56px; min-height: 32px; border-radius: 16px; background: transparent; }
+button.md-nav:hover .md-nav-pill { background: @@state_hover@@; }
+button.md-nav:active .md-nav-pill { background: @@state_press@@; }
+button.md-nav.current { color: @@on_surface@@; }
+button.md-nav.current .md-nav-pill { background: @@secondary_container@@; color: @@on_secondary_container@@; }
+button.md-nav label { font-size: 12px; font-weight: 600; }
+button.md-nav.current label { font-weight: 800; }
+
+/* ---- typography ---- */
+.md-display { font-size: 34px; font-weight: 800; letter-spacing: -0.5px; }
+.md-headline { font-size: 22px; font-weight: 700; }
+.md-title { font-size: 16px; font-weight: 700; }
+.md-body { font-size: 14px; }
+.md-label { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; }
+.md-dim { color: @@on_surface_variant@@; }
+.md-mono { font-family: monospace; font-size: 12px; }
+
+/* ---- cards ---- */
+.md-card { background: @@surface_container_high@@; color: @@on_surface@@; border-radius: 28px; padding: 20px 22px; }
+.md-card.low { background: @@surface_container_low@@; }
+.md-card.highest { background: @@surface_container_highest@@; }
+.md-card.primary { background: @@primary_container@@; color: @@on_primary_container@@; }
+.md-card.primary .md-dim { color: @@on_primary_container@@; opacity: 0.78; }
+.md-card.tonal { background: @@secondary_container@@; color: @@on_secondary_container@@; }
+.md-card.tonal .md-dim { color: @@on_secondary_container@@; opacity: 0.78; }
+.md-card.tertiary { background: @@tertiary_container@@; color: @@on_tertiary_container@@; }
+.md-card.tertiary .md-dim { color: @@on_tertiary_container@@; opacity: 0.78; }
+.md-card.error { background: @@error_container@@; color: @@on_error_container@@; }
+.md-card.error .md-dim { color: @@on_error_container@@; opacity: 0.8; }
+.md-card.ok { background: @@ok_container@@; color: @@on_ok_container@@; }
+.md-card.ok .md-dim { color: @@on_ok_container@@; opacity: 0.8; }
+.md-card.warn { background: @@warn_container@@; color: @@on_warn_container@@; }
+.md-card.warn .md-dim { color: @@on_warn_container@@; opacity: 0.8; }
+.md-card.outlined { background: transparent; border: 1px solid @@outline_variant@@; }
+.md-hero { border-radius: 36px; padding: 26px 28px; }
+
+/* ---- buttons ---- */
+button.md-btn { border-radius: 999px; padding: 0 22px; min-height: 40px; font-weight: 700; border: none; box-shadow: none; background-image: none; }
+button.md-btn.filled { background: @@primary@@; color: @@on_primary@@; }
+button.md-btn.filled:hover { background: @@primary_hover@@; }
+button.md-btn.filled:active { background: @@primary_press@@; }
+button.md-btn.tonal { background: @@secondary_container@@; color: @@on_secondary_container@@; }
+button.md-btn.tonal:hover { background: @@secondary_container_hover@@; }
+button.md-btn.tonal:checked { background: @@primary@@; color: @@on_primary@@; }
+button.md-btn.outlined { background: transparent; color: @@primary@@; border: 1px solid @@outline@@; }
+button.md-btn.outlined:hover { background: @@state_hover@@; }
+button.md-btn.text { background: transparent; color: @@primary@@; padding: 0 12px; }
+button.md-btn.text:hover { background: @@state_hover@@; }
+button.md-btn.danger { background: @@error_container@@; color: @@on_error_container@@; }
+button.md-btn.danger:hover { background: @@error_container_hover@@; }
+button.md-btn.big { min-height: 52px; padding: 0 28px; font-size: 15px; }
+button.md-btn.on-card { background: @@surface@@; color: @@on_surface@@; }
+button.md-btn.on-card:hover { background: @@surface_container_lowest@@; }
+button.md-btn.on-card:checked { background: @@inverse_surface@@; color: @@inverse_on_surface@@; }
+button.md-icon { border-radius: 999px; min-width: 40px; min-height: 40px; padding: 0; background: transparent; border: none; box-shadow: none; color: @@on_surface_variant@@; }
+button.md-icon:hover { background: @@state_hover@@; }
+button.md-icon:checked { background: @@secondary_container@@; color: @@on_secondary_container@@; }
+button.md-icon.danger:hover { color: @@error@@; }
+
+/* ---- chips, badges, dots ---- */
+.md-chip { border-radius: 10px; border: 1px solid @@outline_variant@@; padding: 4px 12px; font-size: 13px; font-weight: 600; color: @@on_surface_variant@@; }
+.md-chip.selected { background: @@secondary_container@@; color: @@on_secondary_container@@; border-color: transparent; }
+.md-badge { border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 700; background: @@surface_container_highest@@; color: @@on_surface_variant@@; }
+.md-badge.primary { background: @@primary_container@@; color: @@on_primary_container@@; }
+.md-badge.warn { background: @@warn_container@@; color: @@on_warn_container@@; }
+.md-badge.ok { background: @@ok_container@@; color: @@on_ok_container@@; }
+.md-dot { min-width: 10px; min-height: 10px; border-radius: 5px; background: @@outline@@; }
+.md-dot.ok { background: @@ok@@; }
+.md-dot.warn { background: @@tertiary@@; }
+.md-dot.bad { background: @@error@@; }
+.md-avatar { min-width: 44px; min-height: 44px; border-radius: 22px; background: @@primary_container@@; color: @@on_primary_container@@; font-weight: 800; font-size: 17px; }
+.md-avatar.big { min-width: 72px; min-height: 72px; border-radius: 26px; font-size: 30px; }
+.md-avatar.surface { background: @@surface@@; color: @@on_surface@@; }
+.md-avatar.tonal { background: @@secondary_container@@; color: @@on_secondary_container@@; }
+.md-avatar.error { background: @@error_container@@; color: @@on_error_container@@; }
+.md-avatar.ok { background: @@ok_container@@; color: @@on_ok_container@@; }
+.md-avatar.warn { background: @@warn_container@@; color: @@on_warn_container@@; }
+
+/* ---- segmented button ---- */
+.md-segmented { border: 1px solid @@outline@@; border-radius: 999px; }
+.md-segmented button { border-radius: 0; border: none; box-shadow: none; background: transparent; min-height: 38px; padding: 0 18px; font-weight: 700; color: @@on_surface_variant@@; background-image: none; }
+.md-segmented button:first-child { border-radius: 999px 0 0 999px; }
+.md-segmented button:last-child { border-radius: 0 999px 999px 0; }
+.md-segmented button:checked { background: @@secondary_container@@; color: @@on_secondary_container@@; }
+
+/* ---- lists ---- */
+list.md-list { background: @@surface_container_high@@; border-radius: 24px; }
+list.md-list > row { background: transparent; padding: 10px 16px; min-height: 56px; }
+list.md-list > row:hover { background: @@state_hover@@; }
+list.md-list > row:first-child { border-radius: 24px 24px 0 0; }
+list.md-list > row:last-child { border-radius: 0 0 24px 24px; }
+list.md-list > row:only-child { border-radius: 24px; }
+list.md-list > row + row { border-top: 1px solid @@outline_variant@@; }
+list.md-list.flat-rows > row + row { border-top: none; }
+list.boxed-list { border-radius: 24px; }
+entry.md-search, searchentry.md-search { background: @@surface_container_high@@; border-radius: 999px; min-height: 48px; padding: 0 16px; border: none; box-shadow: none; }
+.md-dropdown button { border-radius: 999px; background: transparent; border: 1px solid @@outline_variant@@; box-shadow: none; min-height: 34px; padding: 0 12px; font-weight: 600; background-image: none; }
+.md-dropdown button:hover { background: @@state_hover@@; }
+
+/* ---- misc ---- */
+.md-sample-key { font-weight: 700; color: @@on_surface_variant@@; min-width: 92px; }
+.md-code { background: @@surface_container_lowest@@; color: @@on_surface@@; border-radius: 16px; padding: 12px 14px; font-family: monospace; font-size: 12px; }
+.md-timeline { border-radius: 14px; }
+.md-never row { min-height: 44px; }
+.md-never image { color: @@error@@; }
+dialog.md-dialog, window.dialog { border-radius: 28px; }
+
+menubutton.md-cat > button { border-radius: 999px; border: 1px solid @@outline_variant@@; background: transparent; box-shadow: none; background-image: none; min-height: 32px; padding: 0 6px 0 12px; font-weight: 600; font-size: 13px; }
+menubutton.md-cat > button:hover { background: @@state_hover@@; }
+popover.md-cats > contents { border-radius: 24px; padding: 8px; }
+button.md-chipbtn { border-radius: 10px; border: 1px solid @@outline_variant@@; background: transparent; box-shadow: none; background-image: none; min-height: 32px; padding: 0 12px; font-weight: 600; }
+button.md-chipbtn:hover { background: @@state_hover@@; }
+button.md-chipbtn.selected { background: @@secondary_container@@; color: @@on_secondary_container@@; border-color: transparent; }
+
+/* ---- phone width ---- */
+window.md-window.compact .md-card { padding: 14px 16px; border-radius: 24px; }
+window.md-window.compact .md-hero { padding: 18px 18px; border-radius: 28px; }
+window.md-window.compact .md-display { font-size: 26px; }
+window.md-window.compact .md-avatar.big { min-width: 56px; min-height: 56px; border-radius: 20px; }
+window.md-window.compact button.md-btn.big { min-height: 44px; padding: 0 18px; }
+window.md-window.compact list.md-list > row { padding: 8px 10px; }
