@@ -18,6 +18,29 @@ import (
 	"github.com/once-human/desk-agent/internal/paths"
 )
 
+func cmdDoctor(ctx context.Context, args []string) error {
+	if len(args) == 1 && args[0] == "--json" {
+		items := doctor.Collect(ctx)
+		fails := 0
+		for _, it := range items {
+			if it.Level == "fail" {
+				fails++
+			}
+		}
+		if err := printJSON(map[string]any{"version": version, "checks": items, "failed": fails}); err != nil {
+			return err
+		}
+		if fails > 0 {
+			os.Exit(1)
+		}
+		return nil
+	}
+	if doctor.Run(ctx, os.Stdout, version) > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
 // version is overridden at build time: -ldflags "-X main.version=1.2.3".
 var version = "0.1.0"
 
@@ -25,13 +48,16 @@ const usage = `desk-agent ` + "%s" + `
 
 Usage:
   desk-agent run             run the agent (what the systemd service does)
-  desk-agent doctor          check every signal source and print what works
+  desk-agent doctor [--json] check every signal source and print what works
   desk-agent init            create ~/.config/desk-agent with a default config
   desk-agent set-key         store the site key (reads stdin, mode 600)
   desk-agent pause           stop sending; the site shows the laptop as away
   desk-agent resume          start sending again
   desk-agent toggle          pause if running, resume if paused (for a keybind)
-  desk-agent status          show whether the agent is paused
+  desk-agent status [--json] show what the running agent is doing and sending
+  desk-agent config [show|get|set|keys]   read or change settings (keeps your comments)
+  desk-agent sites list|set|remove|import  your site names and categories
+  desk-agent apps list|set|remove|import   your app names and categories
   desk-agent install-hooks   add Claude Code hooks to ~/.claude/settings.json (merges)
   desk-agent uninstall-hooks remove only the hooks desk-agent added
   desk-agent scan-history    propose sites.toml from browser history, then open it to review
@@ -75,9 +101,7 @@ func main() {
 	case "uninstall-native-host":
 		err = cmdInstallNativeHost([]string{"--remove"})
 	case "doctor":
-		if doctor.Run(ctx, os.Stdout, version) > 0 {
-			os.Exit(1)
-		}
+		err = cmdDoctor(ctx, args[1:])
 	case "init":
 		err = cmdInit()
 	case "set-key":
@@ -89,7 +113,13 @@ func main() {
 	case "resume":
 		err = cmdPause(false)
 	case "status":
-		err = cmdStatus()
+		err = cmdStatus(args[1:])
+	case "config":
+		err = cmdConfig(args[1:])
+	case "sites":
+		err = cmdSites(args[1:])
+	case "apps":
+		err = cmdApps(args[1:])
 	case "version", "--version", "-v":
 		fmt.Println("desk-agent", version)
 	case "help", "--help", "-h":
@@ -171,13 +201,4 @@ func notifyAgent() {
 	if _, err := control.Notify("reload"); err != nil {
 		fmt.Fprintln(os.Stderr, "note:", err, "(the flag applies when it starts)")
 	}
-}
-
-func cmdStatus() error {
-	if _, err := os.Stat(paths.PausedFile()); err == nil {
-		fmt.Println("paused")
-	} else {
-		fmt.Println("running (not paused)")
-	}
-	return nil
 }

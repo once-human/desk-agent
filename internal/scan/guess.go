@@ -11,12 +11,12 @@ import (
 
 // Proposal is one proposed sites.toml row.
 type Proposal struct {
-	Host     string
-	Name     string
-	Category string
-	Source   string // "seed", "guess" or "unknown"
-	Visits   int
-	Minutes  int
+	Host     string `json:"host"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Source   string `json:"source"` // "seed", "guess" or "unknown"
+	Visits   int    `json:"visits"`
+	Minutes  int    `json:"minutes"`
 }
 
 // noise are infrastructure hosts that show up in history but are never a

@@ -37,6 +37,45 @@ func (l Level) String() string {
 	}
 }
 
+// Name is the level as a stable lowercase word for machine output.
+func (l Level) Name() string {
+	switch l {
+	case OK:
+		return "ok"
+	case Warn:
+		return "warn"
+	case Fail:
+		return "fail"
+	default:
+		return "skip"
+	}
+}
+
+// Item is one check's outcome in machine-readable form.
+type Item struct {
+	Name   string `json:"name"`
+	Level  string `json:"level"` // ok | warn | fail | skip
+	Detail string `json:"detail"`
+}
+
+// Collect runs every check and returns the results in order.
+func Collect(ctx context.Context) []Item {
+	cfg, cfgErr := config.Load(paths.ConfigFile())
+	items := make([]Item, 0, len(Checks))
+	for _, c := range Checks {
+		var r Result
+		if c.Name == "config" && cfgErr != nil {
+			r = Result{Fail, cfgErr.Error()}
+		} else {
+			cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			r = c.Run(cctx, cfg)
+			cancel()
+		}
+		items = append(items, Item{c.Name, r.Level.Name(), r.Detail})
+	}
+	return items
+}
+
 // Result is one check's outcome.
 type Result struct {
 	Level  Level
@@ -59,22 +98,20 @@ var Checks = []Check{
 // Run executes every check, prints a table to w and returns the number of
 // FAIL results.
 func Run(ctx context.Context, w io.Writer, version string) int {
-	cfg, cfgErr := config.Load(paths.ConfigFile())
 	fmt.Fprintf(w, "desk-agent %s doctor\n\n", version)
 	fails := 0
-	for _, c := range Checks {
-		var r Result
-		if c.Name == "config" && cfgErr != nil {
-			r = Result{Fail, cfgErr.Error()}
-		} else {
-			cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-			r = c.Run(cctx, cfg)
-			cancel()
-		}
-		if r.Level == Fail {
+	for _, it := range Collect(ctx) {
+		lvl := "skip"
+		switch it.Level {
+		case "ok":
+			lvl = "ok  "
+		case "warn":
+			lvl = "warn"
+		case "fail":
+			lvl = "FAIL"
 			fails++
 		}
-		fmt.Fprintf(w, "  [%s] %-18s %s\n", r.Level, c.Name, r.Detail)
+		fmt.Fprintf(w, "  [%s] %-18s %s\n", lvl, it.Name, it.Detail)
 	}
 	fmt.Fprintln(w)
 	if fails == 0 {

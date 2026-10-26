@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/once-human/desk-agent/internal/adult"
@@ -41,18 +44,26 @@ func cmdRun(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	apps, err := catalog.LoadApps(cfg.AppsFile)
+	apps0, err := catalog.LoadApps(cfg.AppsFile)
 	if err != nil {
 		log.Warn("apps.toml unreadable, using built-in seed", "err", err)
 	}
-	sites, err := catalog.LoadSites(cfg.SitesFile)
+	sites0, err := catalog.LoadSites(cfg.SitesFile)
 	if err != nil {
 		log.Warn("sites.toml unreadable, using built-in seed", "err", err)
 	}
-	ad, err := adult.Load(cfg.AdultBlocklistFile)
+	ad0, err := adult.Load(cfg.AdultBlocklistFile)
 	if err != nil {
 		log.Warn("adult blocklist unreadable, using built-in heuristics only", "err", err)
 	}
+	// Catalogs are swapped atomically on `reload`, so no restart is needed
+	// after the GUI or `desk-agent sites set` changes them.
+	var apps atomic.Pointer[catalog.Apps]
+	var sites atomic.Pointer[catalog.Sites]
+	var ad atomic.Pointer[adult.Filter]
+	apps.Store(apps0)
+	sites.Store(sites0)
+	ad.Store(ad0)
 	if p := config.KeyFileModeProblem(); p != "" {
 		log.Warn(p)
 	}
@@ -69,26 +80,75 @@ func cmdRun(ctx context.Context) error {
 	}, queue.New(paths.QueueFile()), log)
 	go snd.Run(ctx)
 
-	eng := engine.New(cfg, apps, snd, log)
+	eng := engine.New(cfg, apps0, snd, log)
 	eng.ReadBattery = battery.Read
 	if control.PausedFlag() {
 		eng.SetPaused(true)
 		log.Info("starting paused (flag file present)")
 	}
 
-	go func() {
-		if err := control.Serve(ctx, log, eng); err != nil {
-			log.Warn("control socket unavailable; pause/resume will apply on next restart", "err", err)
-		}
-	}()
+	started := time.Now()
+	br := bridge.NewServer(log)
 
+	// refreshSite is defined below; reload and state need it, so declare first.
+	var refreshSite func()
+
+	reload := func() error {
+		c, err := config.Load(paths.ConfigFile())
+		if err != nil {
+			return err
+		}
+		a, err := catalog.LoadApps(c.AppsFile)
+		if err != nil {
+			return fmt.Errorf("apps.toml: %w", err)
+		}
+		st, err := catalog.LoadSites(c.SitesFile)
+		if err != nil {
+			return fmt.Errorf("sites.toml: %w", err)
+		}
+		f, err := adult.Load(c.AdultBlocklistFile)
+		if err != nil {
+			return fmt.Errorf("adult blocklist: %w", err)
+		}
+		if c.Endpoint != cfg.Endpoint {
+			log.Warn("endpoint changed in config.toml; restart the agent to use it")
+		}
+		apps.Store(a)
+		sites.Store(st)
+		ad.Store(f)
+		eng.Reconfigure(c, a)
+		if refreshSite != nil {
+			refreshSite()
+		}
+		return nil
+	}
+	endpointHost := ""
+	if u, err := url.Parse(cfg.Endpoint); err == nil {
+		endpointHost = u.Host
+	}
+	h := &handler{
+		eng: eng, reload: reload,
+		state: func() control.State {
+			st := control.State{
+				Version: version, PID: os.Getpid(), Started: started,
+				Paused: eng.Paused(), Private: eng.Private(), Asleep: eng.Asleep(),
+				Recent: eng.History(), Send: snd.Stats(), Browsers: br.Connected(),
+				EndpointHost: endpointHost,
+			}
+			if !st.Paused && !st.Asleep {
+				s := eng.Build()
+				st.Sample = &s
+			}
+			return st
+		},
+	}
 	// Repo of the focused terminal/editor: resolved when focus changes and
 	// again before every heartbeat (cd-ing between repos raises no event).
 	resolveRepo := func(f hypr.Focus) string {
 		if f.Class == "" || f.PID <= 0 {
 			return ""
 		}
-		cat := apps.Lookup(f.Class).Category
+		cat := apps.Load().Lookup(f.Class).Category
 		if cat != "terminal" && cat != "editor" && cat != "ide" {
 			return ""
 		}
@@ -98,10 +158,9 @@ func cmdRun(ctx context.Context) error {
 	// Browser site: the extension reports a hostname; it is only used while a
 	// browser is the focused app, and resolved through the catalog and the
 	// adult filter (a match reports nothing).
-	br := bridge.NewServer(log)
-	refreshSite := func() {
+	refreshSite = func() {
 		f := eng.Focus()
-		if apps.Lookup(f.Class).Category != "browser" {
+		if apps.Load().Lookup(f.Class).Category != "browser" {
 			eng.SetSite(nil)
 			return
 		}
@@ -110,12 +169,12 @@ func cmdRun(ctx context.Context) error {
 			eng.SetSite(nil)
 			return
 		}
-		eng.SetSite(site.Resolve(host, sites, ad))
+		eng.SetSite(site.Resolve(host, sites.Load(), ad.Load()))
 	}
 
 	// Never let an adult site or brand appear in a native player's track text.
-	setMedia := func(m *sample.Media) { eng.SetMedia(ad.ScrubMedia(m)) }
-	mw := mpris.NewWatcher(apps, log, setMedia)
+	setMedia := func(m *sample.Media) { eng.SetMedia(ad.Load().ScrubMedia(m)) }
+	mw := mpris.NewWatcher(apps0, log, setMedia)
 	br.OnChange = func() {
 		refreshSite()
 		mw.SetYouTubeAudible(br.YouTubeAudible())
@@ -123,6 +182,12 @@ func cmdRun(ctx context.Context) error {
 	go func() {
 		if err := br.Run(ctx, paths.BrowserSocket()); err != nil && ctx.Err() == nil {
 			log.Warn("browser bridge unavailable; sites will not be reported", "err", err)
+		}
+	}()
+
+	go func() {
+		if err := control.Serve(ctx, log, h); err != nil {
+			log.Warn("control socket unavailable; pause/resume will apply on next restart", "err", err)
 		}
 	}()
 
@@ -207,3 +272,14 @@ func cmdRun(ctx context.Context) error {
 	eng.Run(ctx)
 	return nil
 }
+
+// handler adapts the engine and the reload/state closures to control.Handler.
+type handler struct {
+	eng    *engine.Engine
+	reload func() error
+	state  func() control.State
+}
+
+func (h *handler) SetPaused(p bool)     { h.eng.SetPaused(p) }
+func (h *handler) Reload() error        { return h.reload() }
+func (h *handler) State() control.State { return h.state() }

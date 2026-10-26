@@ -48,6 +48,37 @@ type Sender struct {
 	mu      sync.Mutex
 	offline bool
 	wake    chan struct{}
+	stats   Stats
+}
+
+// Stats describes the most recent delivery attempts, for the GUI and status.
+type Stats struct {
+	LastAttempt time.Time `json:"lastAttempt"`
+	LastOK      time.Time `json:"lastOK"`
+	// Result is "ok", "network", "unauthorized", "busy", "rejected" or "nokey".
+	Result string `json:"result"`
+	// Status is the last HTTP status, 0 when the request never got an answer.
+	Status int `json:"status"`
+	Queued int `json:"queued"`
+}
+
+// Stats returns a snapshot of delivery health.
+func (s *Sender) Stats() Stats {
+	s.mu.Lock()
+	st := s.stats
+	s.mu.Unlock()
+	st.Queued = s.Queue.Len()
+	return st
+}
+
+func (s *Sender) record(result string, status int) {
+	s.mu.Lock()
+	now := time.Now()
+	s.stats.LastAttempt, s.stats.Result, s.stats.Status = now, result, status
+	if result == "ok" {
+		s.stats.LastOK = now
+	}
+	s.mu.Unlock()
 }
 
 // New builds a Sender with sane transport settings.
@@ -161,6 +192,7 @@ func (s *Sender) post(ctx context.Context, batch []sample.Sample) outcome {
 	key, err := s.Key()
 	if err != nil {
 		s.Log.Error("no site key", "err", err)
+		s.record("nokey", 0)
 		return retry
 	}
 	body, err := json.Marshal(sample.Batch{Samples: batch})
@@ -182,6 +214,7 @@ func (s *Sender) post(ctx context.Context, batch []sample.Sample) outcome {
 		if !errors.Is(err, context.Canceled) {
 			s.Log.Debug("send failed, will retry", "err", errString(err))
 		}
+		s.record("network", 0)
 		return retry
 	}
 	defer resp.Body.Close()
@@ -189,15 +222,19 @@ func (s *Sender) post(ctx context.Context, batch []sample.Sample) outcome {
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		s.record("ok", resp.StatusCode)
 		return sent
 	case resp.StatusCode == http.StatusUnauthorized:
 		s.Log.Error("site rejected the key (401); run `desk-agent set-key`")
+		s.record("unauthorized", resp.StatusCode)
 		return retry
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		s.Log.Warn("site busy", "status", resp.StatusCode)
+		s.record("busy", resp.StatusCode)
 		return retry
 	default:
 		s.Log.Error("site refused a batch, dropping it", "status", resp.StatusCode, "samples", len(batch))
+		s.record("rejected", resp.StatusCode)
 		return discard
 	}
 }

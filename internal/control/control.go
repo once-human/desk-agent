@@ -1,10 +1,21 @@
-// Package control is the tiny unix-socket channel `desk-agent pause|resume`
-// uses to tell the running agent to re-read the pause flag immediately.
+// Package control is the small unix-socket channel to the running agent.
+//
+// Commands (one line in, one line out):
+//
+//	ping    -> "pong"
+//	reload  -> re-read the pause flag, config.toml, sites.toml, apps.toml and
+//	           the adult blocklist; "ok paused=<bool>" or "error <why>"
+//	state   -> one line of JSON (see State), used by `desk-agent status --json`
+//	           and the GUI
+//
+// The socket lives in $XDG_RUNTIME_DIR/desk-agent (mode 0700), so only this
+// user can reach it.
 package control
 
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,11 +25,37 @@ import (
 	"time"
 
 	"github.com/once-human/desk-agent/internal/paths"
+	"github.com/once-human/desk-agent/internal/sample"
+	"github.com/once-human/desk-agent/internal/sender"
 )
 
-// Handler applies a state change; it is implemented by the agent.
+// Handler is implemented by the agent.
 type Handler interface {
 	SetPaused(bool)
+	// Reload re-reads configuration and catalogs. On error the previous
+	// configuration stays in force.
+	Reload() error
+	State() State
+}
+
+// State is what `state` returns: everything a UI needs, nothing sensitive
+// beyond what the agent would send anyway (the sample is exactly what is, or
+// would be, sent).
+type State struct {
+	Version string    `json:"version"`
+	PID     int       `json:"pid"`
+	Started time.Time `json:"started"`
+	Paused  bool      `json:"paused"`
+	Private bool      `json:"private"`
+	Asleep  bool      `json:"asleep"`
+	// Sample is what would be sent right now; nil while paused or asleep.
+	Sample *sample.Sample `json:"sample"`
+	// Recent are the samples emitted lately, oldest first.
+	Recent []sample.Sample `json:"recent"`
+	Send   sender.Stats    `json:"send"`
+	// Browsers are the browser families with a live extension connection.
+	Browsers     []string `json:"browsers"`
+	EndpointHost string   `json:"endpointHost"`
 }
 
 // PausedFlag reports whether the pause flag file exists.
@@ -64,8 +101,20 @@ func serveConn(c net.Conn, log *slog.Logger, h Handler) {
 	case "reload":
 		p := PausedFlag()
 		h.SetPaused(p)
-		log.Info("pause flag applied", "paused", p)
+		if err := h.Reload(); err != nil {
+			log.Warn("reload failed, keeping the previous configuration", "err", err)
+			fmt.Fprintf(c, "error %s\n", strings.ReplaceAll(err.Error(), "\n", " "))
+			return
+		}
+		log.Info("reloaded", "paused", p)
 		fmt.Fprintf(c, "ok paused=%v\n", p)
+	case "state":
+		b, err := json.Marshal(h.State())
+		if err != nil {
+			fmt.Fprintf(c, "error %v\n", err)
+			return
+		}
+		fmt.Fprintf(c, "%s\n", b)
 	case "ping":
 		fmt.Fprintln(c, "pong")
 	default:
@@ -85,6 +134,6 @@ func Notify(cmd string) (string, error) {
 	if _, err := fmt.Fprintln(c, cmd); err != nil {
 		return "", err
 	}
-	reply, err := bufio.NewReader(c).ReadString('\n')
+	reply, err := bufio.NewReaderSize(c, 1<<20).ReadString('\n')
 	return strings.TrimSpace(reply), err
 }

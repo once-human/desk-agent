@@ -199,3 +199,12 @@ func Seed(host string) (SiteEntry, string, bool) {
 // MustEmptySites returns Sites with no entries at all (not even the seed).
 // It exists for tests that need to prove behaviour for unknown hosts.
 func MustEmptySites() *Sites { return &Sites{m: map[string]SiteEntry{}} }
+
+// SeedSites returns a copy of the built-in site entries.
+func SeedSites() map[string]SiteEntry {
+	out := make(map[string]SiteEntry, len(seedSites))
+	for k, v := range seedSites {
+		out[k] = v
+	}
+	return out
+}

@@ -152,3 +152,61 @@ func TestInitNeverOverwrites(t *testing.T) {
 		t.Error("init touched the key")
 	}
 }
+
+func TestApplyEdit(t *testing.T) {
+	out, err := ApplyEdit(DefaultTOML, "private", []string{"true"})
+	if err != nil || !strings.Contains(out, "\nprivate = true\n") {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "# desk-agent configuration") {
+		t.Error("comments must survive an edit")
+	}
+	if err := ValidateText(out); err != nil {
+		t.Errorf("edited config invalid: %v", err)
+	}
+	out, err = ApplyEdit(out, "hide_repos", []string{"secret one", "other"})
+	if err != nil || !strings.Contains(out, `hide_repos = ["secret one", "other"]`) {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if out, err = ApplyEdit(out, "hide_repos", nil); err != nil || !strings.Contains(out, "hide_repos = []") {
+		t.Fatalf("clearing a list: %v\n%s", err, out)
+	}
+	bad := []struct {
+		key  string
+		args []string
+	}{
+		{"interval_s", []string{"1"}},       // below the minimum
+		{"interval_s", []string{"abc"}},     // not a number
+		{"private", []string{"maybe"}},      // not a bool
+		{"endpoint", []string{"https://x"}}, // not settable
+		{"nope", []string{"x"}},
+		{"interval_s", []string{"1", "2"}},
+		{"idle_interval_s", []string{"10"}}, // below interval_s (30)
+	}
+	for _, b := range bad {
+		if _, err := ApplyEdit(DefaultTOML, b.key, b.args); err == nil {
+			t.Errorf("%s %v should be rejected", b.key, b.args)
+		}
+	}
+}
+
+func TestSetWritesAtomicallyAndCreatesFromDefault(t *testing.T) {
+	sandbox(t)
+	if err := Set(paths.ConfigFile(), "battery", []string{"false"}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(paths.ConfigFile())
+	if err != nil || c.Battery {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if err := Set(paths.ConfigFile(), "interval_s", []string{"2"}); err == nil {
+		t.Error("an invalid value must not be written")
+	}
+	if c2, _ := Load(paths.ConfigFile()); c2.IntervalS != 30 {
+		t.Error("the file changed despite the error")
+	}
+	m := c.Map()
+	if _, leaked := m["key"]; leaked || m["hide_repos"] == nil {
+		t.Errorf("Map: %v", m)
+	}
+}

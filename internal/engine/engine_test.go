@@ -156,3 +156,82 @@ func TestPauseSendsFinalAndSuppressesEverything(t *testing.T) {
 		t.Fatal("resume must force a sample")
 	}
 }
+
+func TestReconfigureAppliesPrivateAndHideReposAtOnce(t *testing.T) {
+	e, _, _ := newEng(t, nil)
+	e.SetFocus(hypr.Focus{Class: "kitty"})
+	e.SetFocusRepo("shh")
+	if e.Build().Repo != "shh" || e.Private() {
+		t.Fatal("precondition")
+	}
+	cfg := config.Default()
+	cfg.HideRepos = []string{"shh"}
+	e.Reconfigure(cfg, nil)
+	if r := e.Build().Repo; r != "" {
+		t.Fatalf("hidden repo leaked after reconfigure: %q", r)
+	}
+	cfg.Private = true
+	e.Reconfigure(cfg, nil)
+	if !e.Private() || e.Build().App != nil {
+		t.Fatalf("private mode not applied: %+v", e.Build())
+	}
+}
+
+func TestReconfigureForcesAFreshSample(t *testing.T) {
+	e, sink, _ := newEng(t, nil)
+	e.SetFocus(hypr.Focus{Class: "kitty"})
+	ctx := context.Background()
+	if !e.emit(ctx, false) {
+		t.Fatal("first emit should send")
+	}
+	if e.emit(ctx, false) {
+		t.Fatal("an unchanged sample must not be re-sent")
+	}
+	e.Reconfigure(config.Default(), nil)
+	if !e.emit(ctx, false) {
+		t.Fatal("reconfigure must force the next emit so a privacy change is not delayed")
+	}
+	if len(sink.sent) != 2 {
+		t.Fatalf("sent %d", len(sink.sent))
+	}
+}
+
+func TestHistoryIsBoundedAndCopied(t *testing.T) {
+	e, _, now := newEng(t, nil)
+	e.SetFocus(hypr.Focus{Class: "kitty"})
+	for i := 0; i < HistoryCap+25; i++ {
+		*now = now.Add(time.Minute)
+		e.emit(context.Background(), true)
+	}
+	h := e.History()
+	if len(h) != HistoryCap {
+		t.Fatalf("len=%d want %d", len(h), HistoryCap)
+	}
+	if h[len(h)-1].T <= h[0].T {
+		t.Fatal("history must be oldest first")
+	}
+	h[0].Repo = "mutated"
+	if e.History()[0].Repo == "mutated" {
+		t.Fatal("History must return a copy")
+	}
+}
+
+func TestPausedAndAsleepAreReported(t *testing.T) {
+	e, _, _ := newEng(t, nil)
+	if e.Paused() || e.Asleep() {
+		t.Fatal("start state")
+	}
+	e.SetPaused(true)
+	if !e.Paused() {
+		t.Fatal("paused")
+	}
+	e.SetPaused(false)
+	e.Sleep()
+	if !e.Asleep() {
+		t.Fatal("asleep")
+	}
+	e.Resume()
+	if e.Asleep() {
+		t.Fatal("resume")
+	}
+}

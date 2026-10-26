@@ -176,3 +176,12 @@ func ParseApps(data []byte) (map[string]Entry, error) {
 	}
 	return out, nil
 }
+
+// SeedApps returns a copy of the built-in app entries.
+func SeedApps() map[string]Entry {
+	out := make(map[string]Entry, len(seedApps))
+	for k, v := range seedApps {
+		out[k] = v
+	}
+	return out
+}

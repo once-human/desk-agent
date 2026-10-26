@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -37,6 +38,7 @@ func cmdScanHistory(args []string) error {
 	kind := fs.String("kind", "", "with --db: firefox or chromium")
 	noEdit := fs.Bool("no-edit", false, "write the proposal without the review step (guesses stay unreviewed)")
 	dry := fs.Bool("dry-run", false, "show counts and write nothing")
+	asJSON := fs.Bool("json", false, "print the proposals as JSON and write nothing (for the GUI)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -76,7 +78,9 @@ func cmdScanHistory(args []string) error {
 	for _, s := range srcs {
 		counts, err := scan.Counts(s, since)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "skipping one %s profile: %v\n", s.Browser, err)
+			if !*asJSON {
+				fmt.Fprintf(os.Stderr, "skipping one %s profile: %v\n", s.Browser, err)
+			}
 			continue
 		}
 		read++
@@ -106,6 +110,15 @@ func cmdScanHistory(args []string) error {
 		if p.Source != "seed" {
 			guesses++
 		}
+	}
+	if *asJSON {
+		if props == nil {
+			props = []scan.Proposal{}
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"read": read, "days": *days, "distinct": len(merged),
+			"adultDropped": adultDropped, "proposals": props,
+		})
 	}
 	fmt.Printf("Read %d history database(s), last %d days.\n", read, *days)
 	fmt.Printf("%d distinct hosts; %d proposed (%d from the built-in seed, %d guessed); %d adult host(s) excluded.\n",
@@ -138,7 +151,7 @@ func cmdScanHistory(args []string) error {
 	if *noEdit {
 		fmt.Println("Note: --no-edit skipped the review. Rows marked GUESS/UNKNOWN are unreviewed.")
 	}
-	fmt.Println("Restart the agent to apply it:  systemctl --user restart desk-agent")
+	notifyReload()
 	return nil
 }
 
@@ -147,6 +160,7 @@ func cmdScanHistory(args []string) error {
 func cmdScanApps(args []string) error {
 	fs := flag.NewFlagSet("scan-apps", flag.ContinueOnError)
 	noEdit := fs.Bool("no-edit", false, "write the proposal without the review step")
+	asJSON := fs.Bool("json", false, "print the proposals as JSON and write nothing (for the GUI)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -157,6 +171,9 @@ func cmdScanApps(args []string) error {
 	seen, err := seenapps.Read(paths.SeenApps())
 	if err != nil {
 		return err
+	}
+	if len(seen) == 0 && *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"recorded": 0, "proposals": []scan.AppProposal{}})
 	}
 	if len(seen) == 0 {
 		return errors.New("no focused apps recorded yet: let the agent run for a while (desk-agent run), then try again")
@@ -179,6 +196,12 @@ func cmdScanApps(args []string) error {
 	}
 	home, _ := os.UserHomeDir()
 	props := scan.ProposeApps(counts, known, existing, scan.LoadDesktops(scan.DesktopDirs(home)))
+	if *asJSON {
+		if props == nil {
+			props = []scan.AppProposal{}
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"recorded": len(counts), "proposals": props})
+	}
 	fmt.Printf("%d focused app(s) recorded; %d new to propose.\n", len(counts), len(props))
 	if len(props) == 0 {
 		fmt.Println("Nothing new to add.")
@@ -190,6 +213,6 @@ func cmdScanApps(args []string) error {
 		return err
 	}
 	fmt.Println("Saved", cfg.AppsFile)
-	fmt.Println("Restart the agent to apply it:  systemctl --user restart desk-agent")
+	notifyReload()
 	return nil
 }

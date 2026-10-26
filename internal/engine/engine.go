@@ -58,7 +58,12 @@ type Engine struct {
 	lastEmit time.Time
 	lastAct  bool
 	dirty    chan struct{}
+
+	history []sample.Sample // the most recent emitted samples, newest last
 }
+
+// HistoryCap bounds how many emitted samples are remembered in memory.
+const HistoryCap = 240
 
 // New returns an Engine. Now and ReadBattery default to the real ones.
 func New(cfg config.Config, apps *catalog.Apps, sink Sink, log *slog.Logger) *Engine {
@@ -76,7 +81,49 @@ func (e *Engine) poke() {
 	}
 }
 
+// interval requires e.mu to be held.
 func (e *Engine) interval() time.Duration { return time.Duration(e.Cfg.IntervalS) * time.Second }
+
+// Reconfigure swaps in a freshly loaded config and app catalog without a
+// restart. The endpoint is owned by the sender and is not changed here.
+func (e *Engine) Reconfigure(cfg config.Config, apps *catalog.Apps) {
+	e.mu.Lock()
+	e.Cfg = cfg
+	if apps != nil {
+		e.Apps = apps
+	}
+	e.forceNext = true // what is reported may have changed (private, hide_repos...)
+	e.mu.Unlock()
+	e.poke()
+}
+
+// Private reports the current private-mode setting.
+func (e *Engine) Private() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.Cfg.Private
+}
+
+// Paused reports whether sending is paused.
+func (e *Engine) Paused() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.paused
+}
+
+// Asleep reports whether the machine is suspended or shutting down.
+func (e *Engine) Asleep() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.asleep
+}
+
+// History returns a copy of the recently emitted samples, oldest first.
+func (e *Engine) History() []sample.Sample {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]sample.Sample(nil), e.history...)
+}
 
 // ---- setters (one per signal) ----
 
@@ -299,8 +346,8 @@ func (e *Engine) Run(ctx context.Context) {
 	var debC <-chan time.Time
 
 	reset := func() {
-		d := e.interval()
 		e.mu.Lock()
+		d := e.interval()
 		if !e.lastAct {
 			d = time.Duration(e.Cfg.IdleIntervalS) * time.Second
 		}
@@ -368,6 +415,10 @@ func (e *Engine) emit(ctx context.Context, force bool) bool {
 		return false
 	}
 	e.lastSig, e.lastEmit, e.lastAct = sig, e.Now(), s.Active
+	e.history = append(e.history, s)
+	if len(e.history) > HistoryCap {
+		e.history = append(e.history[:0], e.history[len(e.history)-HistoryCap:]...)
+	}
 	e.mu.Unlock()
 	e.Sink.Send(ctx, s)
 	return true

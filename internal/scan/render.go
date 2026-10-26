@@ -7,27 +7,10 @@ import (
 	"time"
 
 	"github.com/once-human/desk-agent/internal/catalog"
+	"github.com/once-human/desk-agent/internal/tomledit"
 )
 
-// tomlString quotes s as a TOML basic string, dropping control characters.
-func tomlString(s string) string {
-	var b strings.Builder
-	b.WriteByte('"')
-	for _, r := range s {
-		switch {
-		case r == '\\':
-			b.WriteString(`\\`)
-		case r == '"':
-			b.WriteString(`\"`)
-		case r < 0x20 || r == 0x7f:
-			// dropped
-		default:
-			b.WriteRune(r)
-		}
-	}
-	b.WriteByte('"')
-	return b.String()
-}
+func tomlString(s string) string { return tomledit.Quote(s) }
 
 const sitesHeader = `# desk-agent sites.toml
 #
@@ -78,11 +61,11 @@ func RenderSites(existing string, props []Proposal, now time.Time) string {
 
 // AppProposal is one proposed apps.toml row.
 type AppProposal struct {
-	Class    string
-	Name     string
-	Category string
-	Source   string // "desktop", "guess" or "unknown"
-	Count    int
+	Class    string `json:"class"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Source   string `json:"source"` // "desktop", "guess" or "unknown"
+	Count    int    `json:"count"`
 }
 
 const appsHeader = `# desk-agent apps.toml
