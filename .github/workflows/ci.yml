@@ -36,6 +36,24 @@ jobs:
         run: |
           python3 test/e2e/agent_smoke.py
           python3 test/e2e/hooks_smoke.py
+          python3 test/e2e/live_reload_smoke.py
+
+      - name: GUI tests (GTK4 + libadwaita under Xvfb, real agent behind a fake desktop)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common xvfb python3-pyflakes
+          python3 -m pyflakes gui
+          python3 -W ignore -m unittest discover -s gui/tests -p 'test_*.py'
+          GSK_RENDERER=cairo xvfb-run -a -s "-screen 0 1400x1500x24" python3 gui/tests/shots.py "$RUNNER_TEMP/shots" --check
+          GSK_RENDERER=cairo xvfb-run -a -s "-screen 0 1400x1500x24" python3 gui/tests/shots.py "$RUNNER_TEMP/shots-dark" --check --dark --only live,privacy,library
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gui-screenshots
+          path: |
+            ${{ runner.temp }}/shots
+            ${{ runner.temp }}/shots-dark
 
       - name: D-Bus integration tests (private dbus-daemon, fake services)
         run: |
@@ -50,6 +68,16 @@ jobs:
 
       - name: installer script is valid shell
         run: bash -n install.sh
+
+      - name: installer installs and removes the GUI
+        run: |
+          export HOME="$RUNNER_TEMP/h" XDG_DATA_HOME="$RUNNER_TEMP/h/.local/share"; mkdir -p "$HOME"
+          ./install.sh --no-hooks --no-browser --no-service </dev/null || true
+          test -x "$HOME/.local/bin/desk-agent-gui"
+          test -f "$XDG_DATA_HOME/applications/in.onkaryaglewad.DeskAgent.desktop"
+          grep -q "Exec=$HOME/.local/bin/desk-agent-gui" "$XDG_DATA_HOME/applications/in.onkaryaglewad.DeskAgent.desktop"
+          ./install.sh --uninstall </dev/null
+          test ! -e "$HOME/.local/bin/desk-agent-gui"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -94,7 +94,7 @@ The installer builds the binary into `~/.local/bin`, creates the config, asks fo
 (the value of the site's `ADMIN_SECRET`; input hidden), installs and starts the systemd user
 service, merges the Claude Code hooks, writes the browser native-messaging manifests, builds
 the extension and runs `desk-agent doctor`. It is safe to run again. Options: `--no-hooks`,
-`--no-browser`, `--no-service`, `--uninstall` (keeps your config), `--uninstall --purge`.
+`--no-browser`, `--no-service`, `--no-gui`, `--uninstall` (keeps your config), `--uninstall --purge`.
 
 Then, once:
 
@@ -114,6 +114,36 @@ desk-agent doctor
 
 It tests every signal source and says what works. It prints the focused app *class* only,
 never a title.
+
+### The app (GTK4 + libadwaita)
+
+```sh
+sudo pacman -S --needed python-gobject gtk4 libadwaita   # librsvg is normally already installed
+./install.sh                                             # installs "Desk Agent" into your launcher
+desk-agent-gui                                           # or run it from a terminal
+```
+
+The app is a window onto the same agent, for people who would rather click than edit TOML.
+If the GTK libraries are missing, the installer skips the app and says what to install; the
+command line keeps working either way.
+
+| Page | What it is for |
+|---|---|
+| **Live** | What the site is being told right now, in plain words, with the exact JSON the agent would send. A pause button, a private-mode switch, delivery status, today's timeline, and the site's own public view of you. |
+| **Privacy** | Private mode, how long you count as active, which repos are hidden, and a one-line promise of what is never sent. |
+| **Library** | Your sites and apps: search, rename, recategorise, hide, add. "Scan browser history" proposes sites for you to tick; only host names and counts are read, never URLs or titles, and adult sites cannot be listed. |
+| **Health** | Every signal source with a green / amber / red verdict (the same checks as `desk-agent doctor`), the service, the site key, the extension bridge. |
+
+It follows Material You: pick a seed colour (a few presets or any colour) and the whole window
+re-tones for light and dark. It is an approximation built on OKLCH, not Google's exact HCT
+algorithm, so colours will differ a little from what `matugen` or Android would give you from
+the same seed. On a narrow window the side rail becomes a bottom bar.
+
+The app holds no secrets and sends nothing itself. Every change goes through the same
+`desk-agent` commands you could type (so the same validation and the same adult-site refusal
+apply), and the running agent applies them **immediately**: editing sites, apps, privacy or the
+blocklist no longer needs a restart. The one exception is `endpoint`, which is deliberately not
+settable from the app or the CLI; edit `config.toml` and restart.
 
 ### Pause from Hyprland
 
@@ -136,7 +166,11 @@ signing, or Developer Edition).
 | Command | What it does |
 |---|---|
 | `desk-agent run` | Run the agent (the service does this) |
-| `desk-agent doctor` | Check every signal source |
+| `desk-agent-gui` | The app: live view, privacy, sites and apps, health |
+| `desk-agent doctor` | Check every signal source (`--json` for scripts) |
+| `desk-agent config show` / `config set <key> <value>` | Read and change settings; a running agent picks them up at once |
+| `desk-agent sites list` / `set` / `remove` / `import` | Manage `sites.toml` without opening it (comments kept, adult hosts refused) |
+| `desk-agent apps list` / `set` / `remove` / `import` | The same for `apps.toml` |
 | `desk-agent init` | Create `~/.config/desk-agent/config.toml` (never overwrites) |
 | `desk-agent set-key` | Store the site key, hidden input, mode 600 |
 | `desk-agent pause` / `resume` / `toggle` / `status` | Stop and start sending |
@@ -211,7 +245,7 @@ If the site is unreachable, samples are queued in `~/.local/state/desk-agent/que
 ## Uninstall
 
 ```sh
-./install.sh --uninstall           # keeps ~/.config/desk-agent
+./install.sh --uninstall           # removes the app too; keeps ~/.config/desk-agent
 ./install.sh --uninstall --purge   # also deletes config, key, queue and state
 ```
 
@@ -223,11 +257,16 @@ Then remove the extension from the browser.
 make build test           # or: go build ./... && go test ./...
 go test -tags dbustest ./internal/mpris ./internal/logind    # needs dbus-daemon
 python3 test/e2e/agent_smoke.py && python3 test/e2e/hooks_smoke.py   # fake Hyprland + fake site
+python3 test/e2e/live_reload_smoke.py                                 # config/sites/apps applied without a restart
+make gui-test              # app: unit tests + the real agent behind a fake desktop, under Xvfb
 ```
 
 The hardware-dependent parts are tested against fakes: a fake Hyprland socket, a private
 `dbus-daemon` with fake MPRIS and logind services, and a fake ingest server. The GitHub Actions
-workflow in `.github/workflows/ci.yml` builds and runs all of that on every push. Layout: `internal/<signal>` per source, `internal/engine` decides
+workflow in `.github/workflows/ci.yml` builds and runs all of that on every push. The app's tests
+drive the real window under Xvfb against the real agent, assert on what is on screen and on the
+wire (for example that no window title ever appears), and keep screenshots as a CI artifact.
+The app has no dependency beyond PyGObject, GTK 4 and libadwaita; it is tested on Python 3.12, GTK 4.14 and libadwaita 1.5. Layout: `internal/<signal>` per source, `internal/engine` decides
 what to send, `internal/sample` is the wire format, `internal/{adult,hostname,site,catalog}`
 are the privacy rules.
 
