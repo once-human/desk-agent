@@ -6,6 +6,7 @@ package engine
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -34,6 +35,8 @@ type Engine struct {
 	Log         *slog.Logger
 	Now         func() time.Time
 	ReadBattery func() *sample.Battery
+	// ReadSys reports machine load and the agent's own footprint.
+	ReadSys func() *sample.Sys
 	// OnHeartbeat runs just before each heartbeat sample (used to re-resolve
 	// the focused repo, which changes without any event when you cd).
 	OnHeartbeat func()
@@ -60,6 +63,34 @@ type Engine struct {
 	dirty    chan struct{}
 
 	history []sample.Sample // the most recent emitted samples, newest last
+
+	// Focus dwell: seconds per window class inside the current sample bucket.
+	dwellBucket string
+	dwell       map[string]float64
+	focusSince  time.Time
+}
+
+// accrueLocked credits the time since the last change to the focused class,
+// inside the current bucket (the sample's truncated time). Samples in the same
+// bucket replace each other on the site, so each one carries the bucket's
+// running totals.
+func (e *Engine) accrueLocked(now time.Time) {
+	bucket := sample.Format(now, e.interval())
+	if bucket != e.dwellBucket {
+		e.dwellBucket = bucket
+		e.dwell = map[string]float64{}
+		if start, err := time.Parse("2006-01-02T15:04:05Z", bucket); err == nil && e.focusSince.Before(start) {
+			e.focusSince = start
+		}
+	}
+	if e.focusSince.IsZero() {
+		e.focusSince = now
+		return
+	}
+	if e.focus.Class != "" && !e.lid && !e.asleep {
+		e.dwell[e.focus.Class] += now.Sub(e.focusSince).Seconds()
+	}
+	e.focusSince = now
 }
 
 // HistoryCap bounds how many emitted samples are remembered in memory.
@@ -129,6 +160,7 @@ func (e *Engine) History() []sample.Sample {
 
 func (e *Engine) SetFocus(f hypr.Focus) {
 	e.mu.Lock()
+	e.accrueLocked(e.Now())
 	changed := e.focus != f
 	e.focus = f
 	e.mu.Unlock()
@@ -333,6 +365,11 @@ func (e *Engine) buildLocked() sample.Sample {
 	if e.Cfg.Battery && e.ReadBattery != nil {
 		s.Battery = e.ReadBattery()
 	}
+	e.accrueLocked(now)
+	s.Focus = e.focusItemsLocked()
+	if e.ReadSys != nil {
+		s.Sys = e.ReadSys()
+	}
 	return s
 }
 
@@ -422,4 +459,22 @@ func (e *Engine) emit(ctx context.Context, force bool) bool {
 	e.mu.Unlock()
 	e.Sink.Send(ctx, s)
 	return true
+}
+
+// focusItemsLocked is the bucket's dwell, longest first, at most four apps;
+// anything under a second is noise from flicking past a workspace.
+func (e *Engine) focusItemsLocked() []sample.FocusItem {
+	out := make([]sample.FocusItem, 0, len(e.dwell))
+	for class, s := range e.dwell {
+		if s < 1 {
+			continue
+		}
+		ent := e.Apps.Lookup(class)
+		out = append(out, sample.FocusItem{ID: class, Name: ent.Name, Category: ent.Category, S: int(s + 0.5)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].S > out[j].S })
+	if len(out) > 4 {
+		out = out[:4]
+	}
+	return out
 }

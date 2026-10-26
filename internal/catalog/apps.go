@@ -50,6 +50,19 @@ var seedApps = map[string]Entry{
 	// design
 	"gimp": {"GIMP", "design"}, "org.inkscape.inkscape": {"Inkscape", "design"}, "inkscape": {"Inkscape", "design"},
 	"krita": {"Krita", "design"}, "blender": {"Blender", "design"}, "figma-linux": {"Figma", "design"},
+	"org.telegram.desktop.webview": {"Telegram", "chat"}, "zapzap": {"WhatsApp", "chat"}, "com.rtosta.zapzap": {"WhatsApp", "chat"},
+	"whatsapp": {"WhatsApp", "chat"}, "beeper": {"Beeper", "chat"}, "org.gnome.fractal": {"Fractal", "chat"},
+	// AI
+	"com.anthropic.claude": {"Claude", "ai"}, "claude": {"Claude", "ai"}, "claude-desktop": {"Claude", "ai"},
+	"chatgpt": {"ChatGPT", "ai"},
+	// files and notes
+	"org.kde.dolphin": {"Files", "files"}, "dolphin": {"Files", "files"}, "thunar": {"Files", "files"},
+	"org.gnome.nautilus": {"Files", "files"}, "nemo": {"Files", "files"}, "pcmanfm": {"Files", "files"}, "yazi": {"Files", "files"},
+	"obsidian": {"Obsidian", "notes"}, "md.obsidian.obsidian": {"Obsidian", "notes"}, "notion-app": {"Notion", "notes"},
+	"logseq": {"Logseq", "notes"},
+	// this agent's own settings app, and system tools
+	"in.onkaryaglewad.deskagent": {"desk-agent", "tool"}, "pavucontrol": {"Sound settings", "tool"},
+	"org.pulseaudio.pavucontrol": {"Sound settings", "tool"}, "nwg-look": {"Settings", "tool"}, "btop": {"btop", "tool"},
 	// media
 	"mpv": {"mpv", "media"}, "vlc": {"VLC", "media"}, "spotify": {"Spotify", "media"}, "com.obsproject.studio": {"OBS", "media"},
 }
@@ -96,7 +109,46 @@ func (a *Apps) Lookup(class string) Entry {
 			}
 		}
 	}
+	// Browser web apps (Chrome/Chromium "Install as app"): chrome-<host>__<profile>.
+	if e, ok := webApp(class); ok {
+		return e
+	}
 	return Entry{Name: Prettify(class), Category: "other"}
+}
+
+// webApp resolves a browser web-app window class through the site catalog,
+// so an installed WhatsApp Web reads as WhatsApp, a chat app.
+func webApp(class string) (Entry, bool) {
+	for _, p := range []string{"chrome-", "chromium-", "brave-", "msedge-"} {
+		if !strings.HasPrefix(class, p) {
+			continue
+		}
+		host, _, found := strings.Cut(strings.TrimPrefix(class, p), "__")
+		if !found || !strings.Contains(host, ".") {
+			return Entry{}, false
+		}
+		e, _, ok := Seed(host)
+		if !ok || e.Hide {
+			return Entry{Name: Prettify(strings.Split(host, ".")[0]), Category: "other"}, true
+		}
+		cat := "other"
+		switch e.Category {
+		case "chat", "social", "mail":
+			cat = "chat"
+		case "design":
+			cat = "design"
+		case "video", "stream", "music":
+			cat = "media"
+		case "code":
+			cat = "editor"
+		case "ai":
+			cat = "ai"
+		case "docs", "writing":
+			cat = "notes"
+		}
+		return Entry{Name: e.Name, Category: cat}, true
+	}
+	return Entry{}, false
 }
 
 func fill(e Entry, class string) Entry {
@@ -142,7 +194,7 @@ func (a *Apps) Has(class string) bool {
 }
 
 // AppCategories are the categories the site understands for apps.
-var AppCategories = []string{"editor", "ide", "terminal", "chat", "design", "browser", "media", "other"}
+var AppCategories = []string{"editor", "ide", "terminal", "chat", "design", "browser", "media", "ai", "files", "notes", "tool", "other"}
 
 // ParseApps decodes and validates an apps.toml document.
 func ParseApps(data []byte) (map[string]Entry, error) {

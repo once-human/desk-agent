@@ -204,7 +204,10 @@ func (w *Watcher) readMetadata(p *Player, md map[string]dbus.Variant) {
 	trackID := stringOf(md["mpris:trackid"])
 	if p.Browser {
 		rawURL := stringOf(md["xesam:url"])
-		p.YouTube = IsYouTubeURL(rawURL)
+		// Chrome often leaves xesam:url out; its cover art still comes from
+		// YouTube's image host, which gives a YouTube video away without
+		// looking at the title.
+		p.YouTube = IsYouTubeURL(rawURL) || IsYouTubeArt(stringOf(md["mpris:artUrl"]))
 		p.TrackKey = MakeTrackKey(w.salt, trackID, rawURL)
 		p.Title, p.Artist = "", ""
 		return

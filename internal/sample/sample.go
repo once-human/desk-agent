@@ -38,16 +38,40 @@ type Battery struct {
 
 // Sample is one point on the timeline. Every field except T and Active is
 // optional.
+// FocusItem is how long one app was focused during the sample's 30-second
+// bucket. It lets the site see what I mostly did, not just the last window
+// I flicked to.
+type FocusItem struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	S        int    `json:"s"`
+}
+
+// Sys is how hard the laptop is working, and what the agent itself costs.
+type Sys struct {
+	CPU      int     `json:"cpu"`             // whole machine, percent
+	Mem      int     `json:"mem"`             // RAM in use, percent
+	MemGB    float64 `json:"memGB"`           // RAM in use, GB
+	TotalGB  float64 `json:"totalGB"`         // RAM installed, GB
+	AgentMB  float64 `json:"agentMB"`         // this agent's resident memory
+	AgentCPU float64 `json:"agentCPU"`        // this agent's CPU, percent of one core
+	GuiMB    float64 `json:"guiMB,omitempty"` // the settings app, when it's open
+	UptimeH  float64 `json:"uptimeH"`
+}
+
 type Sample struct {
-	T       string   `json:"t"`
-	Active  bool     `json:"active"`
-	IdleS   *int     `json:"idleS,omitempty"`
-	App     *App     `json:"app,omitempty"`
-	Site    *Site    `json:"site,omitempty"`
-	Repo    string   `json:"repo,omitempty"`
-	Claude  *bool    `json:"claude,omitempty"`
-	Media   *Media   `json:"media,omitempty"`
-	Battery *Battery `json:"battery,omitempty"`
+	T       string      `json:"t"`
+	Active  bool        `json:"active"`
+	IdleS   *int        `json:"idleS,omitempty"`
+	App     *App        `json:"app,omitempty"`
+	Site    *Site       `json:"site,omitempty"`
+	Repo    string      `json:"repo,omitempty"`
+	Claude  *bool       `json:"claude,omitempty"`
+	Media   *Media      `json:"media,omitempty"`
+	Battery *Battery    `json:"battery,omitempty"`
+	Focus   []FocusItem `json:"focus,omitempty"`
+	Sys     *Sys        `json:"sys,omitempty"`
 }
 
 // Format renders t as an ISO UTC timestamp, floored to a multiple of
@@ -79,6 +103,8 @@ func (s Sample) Signature() string {
 	c.T = ""
 	c.IdleS = nil
 	c.Battery = nil
+	c.Focus = nil
+	c.Sys = nil
 	b, err := json.Marshal(c)
 	if err != nil {
 		return fmt.Sprintf("%v", err)

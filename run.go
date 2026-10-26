@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -30,10 +31,15 @@ import (
 	"github.com/once-human/desk-agent/internal/seenapps"
 	"github.com/once-human/desk-agent/internal/sender"
 	"github.com/once-human/desk-agent/internal/site"
+	"github.com/once-human/desk-agent/internal/sysstat"
 )
 
 // cmdRun is what the systemd service executes.
 func cmdRun(ctx context.Context) error {
+	// A small, long-lived process: collect garbage sooner and keep the heap
+	// near 32 MB so resident memory stays low.
+	debug.SetGCPercent(50)
+	debug.SetMemoryLimit(32 << 20)
 	level := slog.LevelInfo
 	if os.Getenv("DESK_AGENT_DEBUG") != "" {
 		level = slog.LevelDebug
@@ -82,6 +88,7 @@ func cmdRun(ctx context.Context) error {
 
 	eng := engine.New(cfg, apps0, snd, log)
 	eng.ReadBattery = battery.Read
+	eng.ReadSys = sysstat.New().Read
 	if control.PausedFlag() {
 		eng.SetPaused(true)
 		log.Info("starting paused (flag file present)")

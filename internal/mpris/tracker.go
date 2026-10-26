@@ -71,6 +71,20 @@ func IsYouTubeURL(rawURL string) bool {
 	return h == "youtube.com" || h == "youtu.be" || h == "youtube-nocookie.com"
 }
 
+// IsYouTubeArt reports whether a cover-art URL is served by YouTube's image
+// hosts (i.ytimg.com and friends).
+func IsYouTubeArt(rawURL string) bool {
+	if rawURL == "" {
+		return false
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	h := strings.ToLower(u.Hostname())
+	return h == "ytimg.com" || strings.HasSuffix(h, ".ytimg.com") || strings.HasSuffix(h, ".ggpht.com")
+}
+
 // Player is what the D-Bus layer reports for one player. For browsers,
 // Title and Artist are always empty: they are never extracted.
 type Player struct {
@@ -221,6 +235,17 @@ func (t *Tracker) mediaLocked() *sample.Media {
 	}
 	if best == nil {
 		return nil
+	}
+	// One video often shows up twice (the browser's own player and a
+	// browser-integration plugin); only one of them may carry the URL. If any
+	// browser player knows it's YouTube and is in the same state, it's that.
+	if best.Browser && !t.isYouTubeLocked(best) {
+		for _, p := range t.players {
+			if p.Browser && p.Status == best.Status && t.isYouTubeLocked(p) {
+				best = p
+				break
+			}
+		}
 	}
 	state := strings.ToLower(best.Status)
 	switch {

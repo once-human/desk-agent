@@ -222,7 +222,7 @@ _CATEGORY_HUE = {
     "terminal": 150, "ide": 250, "editor": 285, "code": 250, "browser": 60, "chat": 340,
     "design": 20, "media": 320, "music": 320, "video": 25, "stream": 15, "docs": 200,
     "writing": 95, "mail": 215, "social": 355, "shopping": 45, "news": 80, "learning": 175,
-    "ai": 300, "tool": 120, "other": 0, "private": 0,
+    "ai": 300, "tool": 120, "files": 110, "notes": 190, "other": 0, "private": 0,
 }
 
 
